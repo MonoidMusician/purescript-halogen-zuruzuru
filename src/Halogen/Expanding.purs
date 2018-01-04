@@ -194,7 +194,7 @@ demo =
     eval (Receive v a) = a <$ do
       let ignore = isJust <<< stripPrefix (Pattern "ignore: ") <<< content
       prev <- H.get
-      when (not (ignore prev && ignore v)) do
+      when (not (ignore prev && ignore v) || content v == content prev) do
         update v
       when (isJust $ stripSuffix (Pattern "reset") $ content v) do
         eval (Reset empty unit)
