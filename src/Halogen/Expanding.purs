@@ -7,6 +7,7 @@ module Halogen.Expanding
 import Prelude
 
 import Control.Bind (bindFlipped)
+import Control.Comonad (extract)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.AVar (AVAR)
 import Control.Monad.Eff.Class (class MonadEff)
@@ -15,8 +16,10 @@ import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Eff.Ref (REF)
 import Control.Monad.Except (runExcept)
 import DOM (DOM)
+import DOM.Event.Event (preventDefault)
+import DOM.Event.Types (Event, keyboardEventToEvent)
 import DOM.HTML (window)
-import DOM.HTML.HTMLInputElement (setWidth, value)
+import DOM.HTML.HTMLInputElement (setValue, setWidth, value)
 import DOM.HTML.Types (HTMLInputElement, htmlDocumentToDocument, htmlElementToElement, htmlInputElementToHTMLElement, readHTMLInputElement)
 import DOM.HTML.Window (document)
 import DOM.Node.Document (createElement)
@@ -28,8 +31,8 @@ import Data.Either (hush)
 import Data.Foldable (traverse_)
 import Data.Foreign (Foreign)
 import Data.Int (ceil)
-import Data.Maybe (Maybe(..), isJust)
-import Data.String (Pattern(..), stripSuffix)
+import Data.Maybe (Maybe(..), isJust, isNothing)
+import Data.String (Pattern(..), stripPrefix, stripSuffix)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Halogen (AttrName(..))
@@ -43,6 +46,8 @@ import Halogen.VDom.Driver (runUI)
 data Query a
   = Set String a
   | Raising a
+  | PreventDefault Event (Query a)
+  | NoOp a
   | Update a
 
 foreign import computedStyle :: forall eff. Element -> Eff ( dom :: DOM | eff ) String
@@ -101,13 +106,23 @@ expandingComponent settings =
       , HP.value v -- set the value
       , HP.attr (AttrName "style") ("width: " <> show w <> "px") -- set the width
       , HE.onInput (HE.input_ Raising) -- notify parent on input events
+      -- , HE.onKeyPress (HE.input (\e u -> PreventDefault (keyboardEventToEvent e) (NoOp u)))
       ]
 
     eval :: Query ~> H.ComponentDSL (Tuple Int String) Query String m
     -- When an input event occurs, get the value and notify the parent
-    eval (Raising next) = next <$ do
+    eval (NoOp next) = pure next
+    eval (PreventDefault e next) = do
+      v <- H.gets extract
       H.getRef label >>= obtainInput >>> traverse_ \el ->
-        H.liftEff (value el) >>= H.raise
+        H.liftEff $ setValue v el
+      eval next
+    eval (Raising next) = next <$ do
+      v <- H.gets extract
+      H.getRef label >>= obtainInput >>> traverse_ \el -> do
+        v' <- H.liftEff $ value el
+        H.liftEff $ setValue v el
+        H.raise v'
     -- Set the input value in state and update the size
     eval (Set v next) = H.modify (_ $> v) *> eval (Update next)
     -- Update the size of the input to correspond to the value it will have
@@ -156,7 +171,10 @@ demo =
     eval (Reset v a) = a <$ do
       update v
     eval (Receive v a) = a <$ do
-      update v
+      let ignore = isJust <<< stripPrefix (Pattern "ignore: ")
+      prev <- H.get
+      when (not (ignore prev && ignore v)) do
+        update v
       when (isJust $ stripSuffix (Pattern "reset") v) do
         eval (Reset "" unit)
 
