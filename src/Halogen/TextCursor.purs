@@ -143,6 +143,4 @@ demo =
         eval (Set nov unit)
 
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
-main = runHalogenAff do
-  body <- awaitBody
-  runUI demo unit body
+main = runHalogenAff $ awaitBody >>= runUI demo unit
