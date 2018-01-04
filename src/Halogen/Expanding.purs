@@ -26,6 +26,9 @@ import DOM.Node.Document (createElement)
 import DOM.Node.Element (clientWidth, setAttribute)
 import DOM.Node.Node (appendChild, parentNode, removeChild, setTextContent)
 import DOM.Node.Types (Element, elementToNode)
+import DOM.Util.TextCursor (Direction(..), TextCursor(..), content, empty)
+import DOM.Util.TextCursor.Element (TextCursorElement, setTextCursor, textCursor)
+import DOM.Util.TextCursor.Element.Type (read')
 import Data.Bifunctor (lmap)
 import Data.Either (hush)
 import Data.Foldable (traverse_)
@@ -42,9 +45,10 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Halogen.VDom.Driver (runUI)
+import Unsafe.Coerce (unsafeCoerce)
 
 data Query a
-  = Set String a
+  = Set TextCursor a
   | Raising a
   | PreventDefault Event (Query a)
   | NoOp a
@@ -85,10 +89,13 @@ type Settings =
 obtainInput :: Maybe Foreign -> Maybe HTMLInputElement
 obtainInput = bindFlipped (readHTMLInputElement >>> runExcept >>> hush)
 
+obtainInputTC :: Maybe Foreign -> Maybe TextCursorElement
+obtainInputTC = bindFlipped (read' >>> runExcept >>> hush)
+
 expandingComponent :: forall m eff.
   MonadEff ( dom :: DOM | eff ) m =>
   Settings ->
-  H.Component HH.HTML Query String String m
+  H.Component HH.HTML Query TextCursor TextCursor m
 expandingComponent settings =
   H.lifecycleComponent
     { initialState: Tuple (ceil settings.min)
@@ -100,37 +107,45 @@ expandingComponent settings =
     }
   where
     label = H.RefLabel "textcursor-component" :: H.RefLabel
-    render :: Tuple Int String -> H.ComponentHTML Query
+    render :: Tuple Int TextCursor -> H.ComponentHTML Query
     render (Tuple w v) = HH.input
       [ HP.ref label -- give it a label
-      , HP.value v -- set the value
+      , HP.value (content v) -- set the value
       , HP.attr (AttrName "style") ("width: " <> show w <> "px") -- set the width
       , HE.onInput (HE.input_ Raising) -- notify parent on input events
+      , HE.onInput (HE.input_ Raising)
+      , HE.onClick (HE.input_ Raising)
+      , HE.onKeyUp (HE.input_ Raising)
+      , HE.onFocus (HE.input_ Raising)
       -- , HE.onKeyPress (HE.input (\e u -> PreventDefault (keyboardEventToEvent e) (NoOp u)))
       ]
 
-    eval :: Query ~> H.ComponentDSL (Tuple Int String) Query String m
+    withEl h = H.getRef label >>= obtainInputTC >>> traverse_ h
+
+    eval :: Query ~> H.ComponentDSL (Tuple Int TextCursor) Query TextCursor m
     -- When an input event occurs, get the value and notify the parent
     eval (NoOp next) = pure next
     eval (PreventDefault e next) = do
       v <- H.gets extract
-      H.getRef label >>= obtainInput >>> traverse_ \el ->
-        H.liftEff $ setValue v el
+      withEl \el ->
+        H.liftEff $ setTextCursor v el
       eval next
     eval (Raising next) = next <$ do
       v <- H.gets extract
-      H.getRef label >>= obtainInput >>> traverse_ \el -> do
-        v' <- H.liftEff $ value el
-        H.liftEff $ setValue v el
+      withEl \el -> do
+        v' <- H.liftEff $ textCursor el
+        H.liftEff $ setTextCursor v el
         H.raise v'
     -- Set the input value in state and update the size
-    eval (Set v next) = H.modify (_ $> v) *> eval (Update next)
+    eval (Set v next) = do
+      withEl \el -> H.liftEff $ setTextCursor v el
+      H.modify (_ $> v) *> eval (Update next)
     -- Update the size of the input to correspond to the value it will have
     -- on the next render
     eval (Update next) = next <$ do
       H.getRef label >>= obtainInput >>> traverse_ \el -> do
-        Tuple _ prev <- H.get
-        H.liftEff (testWidth el prev) >>= traverse_ \w' -> do
+        v <- H.gets extract
+        H.liftEff (testWidth el (content v)) >>= traverse_ \w' -> do
           let
             w = ceil
               $ max settings.min
@@ -141,15 +156,15 @@ expandingComponent settings =
       pure unit
 
 data DemoQuery a
-  = Reset String a
-  | Receive String a
+  = Reset TextCursor a
+  | Receive TextCursor a
 
 demo :: forall m eff.
   MonadEff ( dom :: DOM, console :: CONSOLE | eff ) m =>
   H.Component HH.HTML DemoQuery Unit Void m
 demo =
   H.lifecycleParentComponent
-    { initialState: const "initial"
+    { initialState: const nov
     , render
     , eval
     , receiver: const Nothing
@@ -157,26 +172,32 @@ demo =
     , finalizer: Nothing
     }
   where
+    nov = TextCursor
+      { before: "before"
+      , selected: "(selected)"
+      , after: "after"
+      , direction: None
+      }
     com = expandingComponent { min: 50.0, max: 300.0, padding: 15.0 }
 
     update = H.put >>> (_ *> inform)
     inform = do
-      r <- H.get
-      H.liftEff $ log r
+      TextCursor r <- H.get
+      H.liftEff $ log $ unsafeCoerce [r.before, r.selected, r.after]
 
-    render :: String -> H.ParentHTML DemoQuery Query Unit m
+    render :: TextCursor -> H.ParentHTML DemoQuery Query Unit m
     render s = HH.div_ [HH.slot unit com s (HE.input Receive)]
 
-    eval :: DemoQuery ~> H.ParentDSL String DemoQuery Query Unit Void m
+    eval :: DemoQuery ~> H.ParentDSL TextCursor DemoQuery Query Unit Void m
     eval (Reset v a) = a <$ do
       update v
     eval (Receive v a) = a <$ do
-      let ignore = isJust <<< stripPrefix (Pattern "ignore: ")
+      let ignore = isJust <<< stripPrefix (Pattern "ignore: ") <<< content
       prev <- H.get
       when (not (ignore prev && ignore v)) do
         update v
-      when (isJust $ stripSuffix (Pattern "reset") v) do
-        eval (Reset "" unit)
+      when (isJust $ stripSuffix (Pattern "reset") $ content v) do
+        eval (Reset empty unit)
 
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
 main = runHalogenAff $ awaitBody >>= runUI demo unit
