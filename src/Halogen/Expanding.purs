@@ -97,21 +97,21 @@ expandingComponent settings =
     label = H.RefLabel "textcursor-component" :: H.RefLabel
     render :: Tuple Int String -> H.ComponentHTML Query
     render (Tuple w v) = HH.input
-      [ HP.ref label
-      , HP.value v
-      , HP.attr (AttrName "style") ("width: " <> show w <> "px")
-      , HE.onInput (HE.input_ Raising)
-      , HE.onClick (HE.input_ Raising)
-      , HE.onKeyUp (HE.input_ Raising)
-      , HE.onKeyDown (HE.input_ Raising)
-      , HE.onFocus (HE.input_ Raising)
+      [ HP.ref label -- give it a label
+      , HP.value v -- set the value
+      , HP.attr (AttrName "style") ("width: " <> show w <> "px") -- set the width
+      , HE.onInput (HE.input_ Raising) -- notify parent on input events
       ]
 
     eval :: Query ~> H.ComponentDSL (Tuple Int String) Query String m
-    eval (Set v next) = H.modify (_ $> v) *> eval (Update next)
+    -- When an input event occurs, get the value and notify the parent
     eval (Raising next) = next <$ do
       H.getRef label >>= obtainInput >>> traverse_ \el ->
         H.liftEff (value el) >>= H.raise
+    -- Set the input value in state and update the size
+    eval (Set v next) = H.modify (_ $> v) *> eval (Update next)
+    -- Update the size of the input to correspond to the value it will have
+    -- on the next render
     eval (Update next) = next <$ do
       H.getRef label >>= obtainInput >>> traverse_ \el -> do
         Tuple _ prev <- H.get
