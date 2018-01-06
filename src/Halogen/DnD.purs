@@ -7,32 +7,25 @@ import Control.Apply (lift2)
 import Control.Monad.Aff.Class (class MonadAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.AVar (AVAR)
-import Control.Monad.Eff.Class (class MonadEff)
 import Control.Monad.Eff.Console (CONSOLE, log, logShow)
 import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Eff.Ref (REF)
-import Control.Monad.Except (runExcept)
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Monad.State (class MonadState)
 import Control.MonadZero (guard)
 import DOM (DOM)
-import DOM.Event.Event (target)
-import DOM.Event.Types (Event, MouseEvent)
-import DOM.HTML.Event.Types (DragEvent)
+import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
-import DOM.HTML.HTMLInputElement (value)
-import DOM.HTML.Types (readHTMLElement)
-import Data.Array (deleteAt, findIndex, findLastIndex, insertAt, length, updateAt, (!!))
-import Data.Either (hush)
+import Data.Array (deleteAt, filter, findIndex, findLastIndex, insertAt, length, modifyAt, updateAt, (!!))
 import Data.FoldableWithIndex (foldMapWithIndex)
-import Data.Foreign (toForeign)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=))
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Monoid (class Monoid, mempty)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
-import Data.TraversableWithIndex (traverseWithIndex)
+import Data.Tuple (Tuple(..), fst)
 import Halogen (AttrName(..), SubscribeStatus(..))
 import Halogen as H
 import Halogen.Aff (awaitBody, runHalogenAff)
@@ -44,23 +37,26 @@ import Halogen.HTML.Properties as HP
 import Halogen.VDom.Driver (runUI)
 import Unsafe.Coerce (unsafeCoerce)
 
+type Keyed = Tuple String
+
 data Query a
   = Set (Array String) a
   | Add Int a
-  | Remove Int a
+  | Remove String a
   | Swap Int Int a
-  | Dragging Int MouseEvent a
+  | Dragging String MouseEvent a
   | Move Drag.DragEvent a
   | DragTo Int a
   | Update Int String a
 
 type State =
-  { values :: Array String
+  { values :: Array (Keyed String)
   , dragging :: Maybe DragState
+  , supply :: Int
   }
 
 type DragState =
-  { index :: Int
+  { key :: String
   , offset :: Number
   , displacement :: Number
   }
@@ -68,20 +64,23 @@ type DragState =
 fresh :: forall s m. MonadState s m => Lens' s Int -> m Int
 fresh lens = H.gets (view lens) <* H.modify (lens (_+1))
 
-_values :: Lens' State (Array String)
+_values :: Lens' State (Array (Keyed String))
 _values = prop (SProxy :: SProxy "values")
 
 _dragging :: Lens' State (Maybe DragState)
 _dragging = prop (SProxy :: SProxy "dragging")
 
-_dragIndex :: Traversal' State Int
-_dragIndex = _dragging <<< _Just <<< prop (SProxy :: SProxy "index")
+_dragKey :: Traversal' State String
+_dragKey = _dragging <<< _Just <<< prop (SProxy :: SProxy "key")
 
 _offset :: Traversal' State Number
 _offset = _dragging <<< _Just <<< prop (SProxy :: SProxy "offset")
 
 initialState :: Array String -> State
-initialState = { values: _, dragging: Nothing }
+initialState vs = { values: addKeys vs, supply: length vs, dragging: Nothing }
+
+addKeys :: forall a. Array a -> Array (Keyed a)
+addKeys = mapWithIndex (Tuple <<< show)
 
 surroundMapWithIndices :: forall m a. Monoid m =>
   (Int -> m) ->
@@ -104,7 +103,7 @@ dnd =
     , finalizer: Nothing
     }
   where
-    label i = H.RefLabel ("textcursor-component" <> show i) :: H.RefLabel
+    label i = H.RefLabel ("textcursor-component" <> i) :: H.RefLabel
 
     but t q = HH.button [ HE.onClick (HE.input_ q) ] [ HH.text t ]
     but' e t q = if e
@@ -112,70 +111,65 @@ dnd =
       else HH.button [ HP.disabled true ] [ HH.text t ]
 
     add = HH.div_ [ but "+" (Add 0) ]
-    adding i = [ HH.div_ [ but "+" (Add i) ] ]
-    handle i = HH.button
-      [ HE.onMouseDown (HE.input (Dragging i))
+    adding i = [ Tuple ("add" <> show i) $ HH.div_ [ but "+" (Add i) ] ]
+    handle k = HH.button
+      [ HE.onMouseDown (HE.input (Dragging k))
       , HP.attr (AttrName "style") "cursor: move"
       ]
       [ HH.text "≡" ]
-    dragStyle :: forall r i. Maybe DragState -> Int -> HP.IProp r i
-    dragStyle dragging idx = HP.attr (H.AttrName "style") case dragging of
-      Just { index: i, displacement, offset } | i == idx ->
+    dragStyle :: forall r i. Maybe DragState -> String -> HP.IProp r i
+    dragStyle dragging key = HP.attr (H.AttrName "style") case dragging of
+      Just { key: k, displacement, offset } | k == key ->
         "transform: translateY(" <> show (displacement - offset) <> "px)"
       _ -> ""
 
     render :: State -> H.ComponentHTML Query
-    render { values, dragging } = HH.div_ $ values #
-      surroundMapWithIndices adding \i v ->
-        [ HH.div [ dragStyle dragging i ]
+    render { values, dragging } = HK.div_ $ values #
+      surroundMapWithIndices adding \i (Tuple k v) ->
+        pure $ Tuple k $ HH.div [ dragStyle dragging k ]
           [ but' (i > 0) "▲" (Swap i (i-1))
-          , handle i
+          , handle k
           , but' (i < length values - 1) "▼" (Swap i (i+1))
           , HH.text (" " <> show (i+1) <> ". ")
           , HH.input
-            [ HP.ref (label i)
+            [ HP.ref (label k)
             , HP.value v
             , HE.onValueInput (HE.input (Update i <<< id))
             -- , HE.onClick (HE.input (Update <<< mouseEventToEvent))
             -- , HE.onKeyUp (HE.input (Update <<< keyboardEventToEvent))
             -- , HE.onFocus (HE.input (Update <<< focusEventToEvent))
             ]
-          , but "-" (Remove i)
+          , but "-" (Remove k)
           ]
-        ]
 
     mid = _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
 
-    getPos :: Int -> MaybeT (H.ComponentDSL State Query q m) Number
-    getPos i = do
-      e <- MaybeT $ H.getRef (label i)
+    getPos :: String -> MaybeT (H.ComponentDSL State Query q m) Number
+    getPos k = do
+      e <- MaybeT $ H.getRef (label k)
       mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
 
     getPoses :: H.ComponentDSL State Query q m (Array (Maybe Number))
     getPoses =
       H.gets (view _values) >>=
-        traverseWithIndex \i _ ->
-          runMaybeT $ getPos i
-          {-
-          runMaybeT do
-            e <- MaybeT $ H.getRef (label i)
-            m <- mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
-            v <- H.liftEff (value (unsafeCoerce e))
-            pure {pos:m,val:v}
-          -}
+        traverse \(Tuple k _) ->
+          runMaybeT $ getPos k
+
+    fresh' = fresh (prop (SProxy :: SProxy "supply"))
 
     eval :: Query ~> H.ComponentDSL State Query q m
     eval (Set values next) = next <$ do
-      _values .= values
+      H.put (initialState values)
     eval (Update i v next) = next <$ do
-      _values %= (fromMaybe <*> updateAt i v)
+      _values %= (fromMaybe <*> modifyAt i (_ $> v))
     eval (Add i next) = next <$ do
       -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
-      _values %= (fromMaybe <*> insertAt i mempty)
+      k <- show <$> fresh'
+      _values %= (fromMaybe <*> insertAt i (Tuple k mempty))
       -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
-    eval (Remove i next) = next <$ do
+    eval (Remove k next) = next <$ do
       -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
-      _values %= (fromMaybe <*> deleteAt i)
+      _values %= filter (fst >>> notEq k)
       -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
     eval (Swap i j next) = next <$ runMaybeT do
       values <- H.lift $ H.gets (view _values)
@@ -188,20 +182,21 @@ dnd =
       -- H.lift $ getPoses >>= H.liftEff <<< log <<< unsafeCoerce
     eval (DragTo i' next) = next <$ runMaybeT do
       dragging <- MaybeT $ H.gets $ view _dragging
-      let i = dragging.index
-      oldPos <- getPos i
+      let k = dragging.key
+      oldPos <- getPos k
       values <- H.gets (view _values)
-      v <- MaybeT $ pure (values !! i)
-      v' <- MaybeT $ pure (deleteAt i values)
-      v'' <- MaybeT $ pure (insertAt i' v v')
-      let dragging' = dragging { index = i' }
-      H.put { values: v'', dragging: Just dragging' }
-      newPos <- getPos i
-      _offset += (oldPos - newPos)
-    eval (Dragging i e next) = next <$ runMaybeT do
+      values' <- MaybeT $ pure do
+        i <- findIndex (fst >>> eq k) values
+        v <- values !! i
+        deleteAt i values >>= insertAt i' v
+      H.modify _ { values = values' }
+      newPos <- getPos k
+      _offset += (newPos - oldPos)
+    eval (Dragging k e next) = next <$ runMaybeT do
       -- H.liftEff $ logShow i
       H.lift $ H.subscribe $ Drag.dragEventSource e \e -> Just $ Move e Listening
-      _dragging .= Just { index: i, displacement: 0.0, offset: 0.0 }
+      H.gets (view _values) >>= H.liftEff <<< logShow
+      _dragging .= Just { key: k, displacement: 0.0, offset: 0.0 }
     eval (Move e next) = next <$ case e of
       Drag.Move e d -> do
         -- H.liftEff $ logShow d.offsetY
@@ -209,8 +204,10 @@ dnd =
         poses <- getPoses
         -- H.liftEff $ log $ unsafeCoerce poses
         void $ runMaybeT do
-          i <- MaybeT $ H.gets $ preview _dragIndex
-          p <- getPos i
+          k <- MaybeT $ H.gets $ preview _dragKey
+          values <- H.gets (view _values)
+          i <- MaybeT $ pure $ findIndex (fst >>> eq k) values
+          p <- getPos k
           let
             -- these will either default to `i` (already) or
             -- be the index that this should go to
@@ -220,8 +217,8 @@ dnd =
           guard (least < most)
           let
             i'
-              | most > i = most
-              | least < i = least
+              | most > i && least == i = most
+              | least < i && most == i = least
               | otherwise = i
           guard (i /= i') -- redundant, but just to be safe
           -- H.liftEff $ logShow i'
