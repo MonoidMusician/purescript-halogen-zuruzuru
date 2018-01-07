@@ -1,4 +1,4 @@
-module Halogen.DnD where
+module Halogen.Zuruzuru where
 
 
 import Prelude
@@ -40,7 +40,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 type Keyed = Tuple String
 
-data Query e a
+data Query o e a
   = Set (Array e) a
   | Add Int a
   | Remove String a
@@ -49,6 +49,7 @@ data Query e a
   | Move Drag.DragEvent a
   | DragTo Int a
   | Update String e a
+  | Output o a
 
 type State e =
   { values :: Array (Keyed e)
@@ -91,12 +92,13 @@ surroundMapWithIndices m f as = (_ <> m (length as)) $
   as # foldMapWithIndex \i a ->
     m i <> f i a
 
-type Helpers q e =
+type Helpers o q e =
   { prev :: String -> HH.HTML Void q
   , next :: String -> HH.HTML Void q
   , handle :: String -> HH.HTML Void q
   , remove :: String -> HH.HTML Void q
   , set :: e -> q
+  , output :: o -> q
   }
 
 type Item e =
@@ -105,13 +107,13 @@ type Item e =
   , value :: e
   }
 
-dnd :: forall m e q eff.
+zuruzuru :: forall m e o eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
   e ->
   (String -> Maybe e) ->
-  (forall q. Helpers q e -> Item e -> HH.HTML Void q) ->
-  H.Component HH.HTML (Query e) (Array e) q m
-dnd default parse render1 =
+  (forall q. Helpers o q e -> Item e -> HH.HTML Void q) ->
+  H.Component HH.HTML (Query o e) (Array e) o m
+zuruzuru default parse render1 =
   H.lifecycleComponent
     { initialState
     , render
@@ -141,7 +143,7 @@ dnd default parse render1 =
         "transform: translateY(" <> show (displacement - offset) <> "px)"
       _ -> ""
 
-    render :: State e -> H.ComponentHTML (Query e)
+    render :: State e -> H.ComponentHTML (Query o e)
     render { values, dragging } = HK.div_ $ values #
       surroundMapWithIndices adding \i (Tuple k v) ->
         pure $ Tuple k $ HH.div [ HP.ref (label k), dragStyle dragging k ]
@@ -151,16 +153,17 @@ dnd default parse render1 =
             , remove: but <@> Remove k
             , handle: handle k
             , set: Update k <@> unit
+            , output: Output <@> unit
             } { key: k, index: i, value: v }
 
     mid = _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
 
-    getPos :: String -> MaybeT (H.ComponentDSL (State e) (Query e) q m) Number
+    getPos :: String -> MaybeT (H.ComponentDSL (State e) (Query o e) o m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
       mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
 
-    getPoses :: H.ComponentDSL (State e) (Query e) q m (Array (Maybe Number))
+    getPoses :: H.ComponentDSL (State e) (Query o e) o m (Array (Maybe Number))
     getPoses =
       H.gets (view _values) >>=
         traverse \(Tuple k _) ->
@@ -168,7 +171,9 @@ dnd default parse render1 =
 
     fresh' = fresh (prop (SProxy :: SProxy "supply"))
 
-    eval :: Query e ~> H.ComponentDSL (State e) (Query e) q m
+    eval :: Query o e ~> H.ComponentDSL (State e) (Query o e) o m
+    eval (Output o next) = next <$ do
+      H.raise o
     eval (Set values next) = next <$ do
       H.put (initialState values)
     eval (Update k v next) = next <$ do
@@ -198,32 +203,31 @@ dnd default parse render1 =
       newPos <- getPos k
       _offset += (newPos - oldPos)
     eval (Dragging k e next) = next <$ runMaybeT do
-      H.lift $ H.subscribe $ Drag.dragEventSource e \e -> Just $ Move e Listening
+      H.lift $ H.subscribe $ Drag.dragEventSource e \e' -> Just $ Move e' Listening
       _dragging ?= { key: k, displacement: 0.0, offset: 0.0 }
-    eval (Move e next) = next <$ case e of
-      Drag.Move e d -> do
-        _dragging %= map _ { displacement = d.offsetY }
-        poses <- getPoses
-        void $ runMaybeT do
-          k <- MaybeT $ H.gets $ preview _dragKey
-          values <- H.gets (view _values)
-          i <- MaybeT $ pure $ findIndex (fst >>> eq k) values
-          p <- getPos k
-          let
-            -- these will either default to `i` (already) or
-            -- be the index that this should go to
-            least = fromMaybe i $ poses # findIndex (maybe false (_ >= p))
-            most = fromMaybe i $ poses # findLastIndex (maybe false (_ <= p))
-          guard (least < most)
-          let
-            i'
-              | most > i && least == i = most
-              | least < i && most == i = least
-              | otherwise = i
-          guard (i /= i') -- redundant, but just to be safe
-          H.lift $ eval (DragTo i' unit)
-      Drag.Done e -> do
-        _dragging .= Nothing
+    eval (Move (Drag.Move e d) next) = next <$ do
+      _dragging %= map _ { displacement = d.offsetY }
+      poses <- getPoses
+      runMaybeT do
+        k <- MaybeT $ H.gets $ preview _dragKey
+        values <- H.gets (view _values)
+        i <- MaybeT $ pure $ findIndex (fst >>> eq k) values
+        p <- getPos k
+        let
+          -- these will either default to `i` (already) or
+          -- be the index that this should go to
+          least = fromMaybe i $ poses # findIndex (maybe false (_ >= p))
+          most = fromMaybe i $ poses # findLastIndex (maybe false (_ <= p))
+        guard (least < most)
+        let
+          i'
+            | most > i && least == i = most
+            | least < i && most == i = least
+            | otherwise = i
+        guard (i /= i') -- redundant, but just to be safe
+        H.lift $ eval (DragTo i' unit)
+    eval (Move (Drag.Done e) next) = next <$ do
+      _dragging .= Nothing
 
 data DemoQuery a
   = Receive Void a
@@ -242,7 +246,7 @@ demo =
     , finalizer: Nothing
     }
   where
-    com = dnd mempty pure \{ next, prev, handle, remove, set } ->
+    com = zuruzuru mempty pure \{ next, prev, handle, remove, set } ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ prev "▲"
         , handle "≡"
@@ -258,10 +262,10 @@ demo =
       r <- H.get
       H.liftEff $ logShow r
 
-    render :: Array String -> H.ParentHTML DemoQuery (Query String) Unit m
+    render :: Array String -> H.ParentHTML DemoQuery (Query Void String) Unit m
     render s = HH.div_ [HH.slot unit com s (HE.input Receive)]
 
-    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query String) Unit v m
+    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query Void String) Unit v m
     eval (Reset v a) = a <$ do
       update v
       H.liftEff $ log "Update"
