@@ -40,18 +40,18 @@ import Unsafe.Coerce (unsafeCoerce)
 
 type Keyed = Tuple String
 
-data Query a
-  = Set (Array String) a
+data Query e a
+  = Set (Array e) a
   | Add Int a
   | Remove String a
   | Swap Int Int a
   | Dragging String MouseEvent a
   | Move Drag.DragEvent a
   | DragTo Int a
-  | Update String String a
+  | Update String e a
 
-type State =
-  { values :: Array (Keyed String)
+type State e =
+  { values :: Array (Keyed e)
   , dragging :: Maybe DragState
   , supply :: Int
   }
@@ -65,22 +65,22 @@ type DragState =
 fresh :: forall s m. MonadState s m => Lens' s Int -> m Int
 fresh lens = H.gets (view lens) <* H.modify (lens (_+1))
 
-_values :: Lens' State (Array (Keyed String))
+_values :: forall e. Lens' (State e) (Array (Keyed e))
 _values = prop (SProxy :: SProxy "values")
 
-_dragging :: Lens' State (Maybe DragState)
+_dragging :: forall e. Lens' (State e) (Maybe DragState)
 _dragging = prop (SProxy :: SProxy "dragging")
 
-_dragKey :: Traversal' State String
+_dragKey :: forall e. Traversal' (State e) String
 _dragKey = _dragging <<< _Just <<< prop (SProxy :: SProxy "key")
 
-_offset :: Traversal' State Number
+_offset :: forall e. Traversal' (State e) Number
 _offset = _dragging <<< _Just <<< prop (SProxy :: SProxy "offset")
 
-initialState :: Array String -> State
+initialState :: Array ~> State
 initialState vs = { values: addKeys vs, supply: length vs, dragging: Nothing }
 
-addKeys :: forall a. Array a -> Array (Keyed a)
+addKeys :: forall e. Array e -> Array (Keyed e)
 addKeys = mapWithIndex (Tuple <<< append "item" <<< show)
 
 surroundMapWithIndices :: forall m a. Monoid m =>
@@ -91,10 +91,27 @@ surroundMapWithIndices m f as = (_ <> m (length as)) $
   as # foldMapWithIndex \i a ->
     m i <> f i a
 
-dnd :: forall m a q eff.
+type Helpers q e =
+  { prev :: String -> HH.HTML Void q
+  , next :: String -> HH.HTML Void q
+  , handle :: String -> HH.HTML Void q
+  , remove :: String -> HH.HTML Void q
+  , set :: e -> q
+  }
+
+type Item e =
+  { key :: String
+  , index :: Int
+  , value :: e
+  }
+
+dnd :: forall m e q eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
-  H.Component HH.HTML Query (Array String) q m
-dnd =
+  e ->
+  (String -> Maybe e) ->
+  (forall q. Helpers q e -> Item e -> HH.HTML Void q) ->
+  H.Component HH.HTML (Query e) (Array e) q m
+dnd default parse render1 =
   H.lifecycleComponent
     { initialState
     , render
@@ -113,41 +130,37 @@ dnd =
 
     add = HH.div_ [ but "+" (Add 0) ]
     adding i = [ Tuple ("add" <> show i) $ HH.div_ [ but "+" (Add i) ] ]
-    handle k = HH.button
+    handle k s = HH.button
       [ HE.onMouseDown (HE.input (Dragging k))
       , HP.attr (AttrName "style") "cursor: move"
       ]
-      [ HH.text "≡" ]
+      [ HH.text s ]
     dragStyle :: forall r i. Maybe DragState -> String -> HP.IProp r i
     dragStyle dragging key = HP.attr (H.AttrName "style") case dragging of
       Just { key: k, displacement, offset } | k == key ->
         "transform: translateY(" <> show (displacement - offset) <> "px)"
       _ -> ""
 
-    render :: State -> H.ComponentHTML Query
+    render :: State e -> H.ComponentHTML (Query e)
     render { values, dragging } = HK.div_ $ values #
       surroundMapWithIndices adding \i (Tuple k v) ->
-        pure $ Tuple k $ HH.div [ dragStyle dragging k ]
-          [ but' (i > 0) "▲" (Swap i (i-1))
-          , handle k
-          , but' (i < length values - 1) "▼" (Swap i (i+1))
-          , HH.text (" " <> show (i+1) <> ". ")
-          , HH.input
-            [ HP.ref (label k)
-            , HP.value v
-            , HE.onValueInput (HE.input (Update k <<< id))
-            ]
-          , but "-" (Remove k)
-          ]
+        pure $ Tuple k $ HH.div [ HP.ref (label k), dragStyle dragging k ]
+          $ pure $ render1
+            { prev: but' (i > 0) <@> Swap i (i-1)
+            , next: but' (i < length values - 1) <@> Swap i (i+1)
+            , remove: but <@> Remove k
+            , handle: handle k
+            , set: Update k <@> unit
+            } { key: k, index: i, value: v }
 
     mid = _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
 
-    getPos :: String -> MaybeT (H.ComponentDSL State Query q m) Number
+    getPos :: String -> MaybeT (H.ComponentDSL (State e) (Query e) q m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
       mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
 
-    getPoses :: H.ComponentDSL State Query q m (Array (Maybe Number))
+    getPoses :: H.ComponentDSL (State e) (Query e) q m (Array (Maybe Number))
     getPoses =
       H.gets (view _values) >>=
         traverse \(Tuple k _) ->
@@ -155,14 +168,14 @@ dnd =
 
     fresh' = fresh (prop (SProxy :: SProxy "supply"))
 
-    eval :: Query ~> H.ComponentDSL State Query q m
+    eval :: Query e ~> H.ComponentDSL (State e) (Query e) q m
     eval (Set values next) = next <$ do
       H.put (initialState values)
     eval (Update k v next) = next <$ do
       _values %= map (extend \(Tuple k' v') -> if k == k' then v else v')
     eval (Add i next) = next <$ do
       k <- append "item" <<< show <$> fresh'
-      _values %= (fromMaybe <*> insertAt i (Tuple k mempty))
+      _values %= (fromMaybe <*> insertAt i (Tuple k default))
     eval (Remove k next) = next <$ do
       _values %= filter (fst >>> notEq k)
     eval (Swap i j next) = next <$ runMaybeT do
@@ -229,17 +242,26 @@ demo =
     , finalizer: Nothing
     }
   where
-    com = dnd
+    com = dnd mempty pure \{ next, prev, handle, remove, set } ->
+      \{ key: k, index: i, value: v } -> HH.div_
+        [ prev "▲"
+        , handle "≡"
+        , next "▼"
+        , HH.text (" " <> show (i+1) <> ". ")
+        , HH.input
+          [ HP.value v, HE.onValueInput (Just <<< set) ]
+        , remove "-"
+        ]
 
     update = H.put >>> (_ *> inform)
     inform = do
       r <- H.get
       H.liftEff $ logShow r
 
-    render :: Array String -> H.ParentHTML DemoQuery Query Unit m
+    render :: Array String -> H.ParentHTML DemoQuery (Query String) Unit m
     render s = HH.div_ [HH.slot unit com s (HE.input Receive)]
 
-    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery Query Unit v m
+    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query String) Unit v m
     eval (Reset v a) = a <$ do
       update v
       H.liftEff $ log "Update"
