@@ -17,17 +17,16 @@ import Control.MonadZero (guard)
 import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
-import Data.Array (deleteAt, filter, findIndex, findLastIndex, insertAt, length, updateAt, (!!))
+import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, updateAt, (!!))
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
 import Data.Monoid (class Monoid, mempty)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
-import Halogen (AttrName(..), SubscribeStatus(..))
 import Halogen as H
 import Halogen.Aff (awaitBody, runHalogenAff)
 import Halogen.Component.Utils.Drag as Drag
@@ -92,28 +91,51 @@ surroundMapWithIndices m f as = (_ <> m (length as)) $
   as # foldMapWithIndex \i a ->
     m i <> f i a
 
+-- | The (opaque) queries to perform certain actions on an item.
 type Helpers o q e =
-  { prev :: String -> HH.HTML Void q
-  , next :: String -> HH.HTML Void q
-  , handle :: String -> HH.HTML Void q
-  , remove :: String -> HH.HTML Void q
+  { -- | Swap this item with the previous one, if not the first
+    prev :: Maybe q
+  -- | Swap this item with the next one, if not the last
+  , next :: Maybe q
+  -- | Remove this item
+  , remove :: q
+  -- | Give this item a new value
   , set :: e -> q
+  -- | Lift an output query through the component
   , output :: o -> q
   }
 
+-- | The property for a handler. No in the `Helpers` record because records
+-- | hate impredicativity.
+type Handle q = forall r. HH.IProp ( onMouseDown :: MouseEvent | r ) q
+
+-- | Information about an item stored in state.
 type Item e =
-  { key :: String
+  { -- | The unique key given to this item
+    key :: String
+  -- | The current index of this item
   , index :: Int
+  -- | The current value of this item
   , value :: e
   }
 
+-- | Whether the list is rendered vertically or horizontally. Horizontal has
+-- | a (horizontal) scrollbar when needed.
+data Direction = Vertical | Horizontal
+
+-- | Render a `zuruzuru` component!
 zuruzuru :: forall m e o eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+  Direction ->
+  -- | Default value
   e ->
-  (String -> Maybe e) ->
-  (forall q. Helpers o q e -> Item e -> HH.HTML Void q) ->
+  -- | Render a button for adding a component
+  (forall q. q -> Maybe (HH.HTML Void q)) ->
+  -- | Render an item given certain queries, an `onMouseDown` property for the
+  -- | draggable handle, and information about the item.
+  (forall q. Helpers o q e -> Handle q -> Item e -> HH.HTML Void q) ->
   H.Component HH.HTML (Query o e) (Array e) o m
-zuruzuru default parse render1 =
+zuruzuru dir default addBtn render1 =
   H.lifecycleComponent
     { initialState
     , render
@@ -125,18 +147,8 @@ zuruzuru default parse render1 =
   where
     label i = H.RefLabel ("textcursor-component" <> i) :: H.RefLabel
 
-    but t q = HH.button [ HE.onClick (HE.input_ q) ] [ HH.text t ]
-    but' e t q = if e
-      then but t q
-      else HH.button [ HP.disabled true ] [ HH.text t ]
-
-    add = HH.div_ [ but "+" (Add 0) ]
-    adding i = [ Tuple ("add" <> show i) $ HH.div_ [ but "+" (Add i) ] ]
-    handle k s = HH.button
-      [ HE.onMouseDown (HE.input (Dragging k))
-      , HP.attr (AttrName "style") "cursor: move"
-      ]
-      [ HH.text s ]
+    item k props children = [ Tuple k (HH.div props children) ]
+    adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) [] [ b ]
     dragStyle :: forall r i. Maybe DragState -> String -> HP.IProp r i
     dragStyle dragging key = HP.attr (H.AttrName "style") case dragging of
       Just { key: k, displacement, offset } | k == key ->
@@ -145,16 +157,16 @@ zuruzuru default parse render1 =
 
     render :: State e -> H.ComponentHTML (Query o e)
     render { values, dragging } = HK.div_ $ values #
+      let top = length values - 1 in
       surroundMapWithIndices adding \i (Tuple k v) ->
-        pure $ Tuple k $ HH.div [ HP.ref (label k), dragStyle dragging k ]
+        item k [ HP.ref (label k), dragStyle dragging k ]
           $ pure $ render1
-            { prev: but' (i > 0) <@> Swap i (i-1)
-            , next: but' (i < length values - 1) <@> Swap i (i+1)
-            , remove: but <@> Remove k
-            , handle: handle k
+            { prev: guard (i > 0) $> Swap i (i-1) unit
+            , next: guard (i < top) $> Swap i (i+1) unit
+            , remove: Remove k unit
             , set: Update k <@> unit
             , output: Output <@> unit
-            } { key: k, index: i, value: v }
+            } (HE.onMouseDown (HE.input (Dragging k))) { key: k, index: i, value: v }
 
     mid = _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
 
@@ -203,7 +215,7 @@ zuruzuru default parse render1 =
       newPos <- getPos k
       _offset += (newPos - oldPos)
     eval (Dragging k e next) = next <$ runMaybeT do
-      H.lift $ H.subscribe $ Drag.dragEventSource e \e' -> Just $ Move e' Listening
+      H.lift $ H.subscribe $ Drag.dragEventSource e \e' -> Just $ Move e' H.Listening
       _dragging ?= { key: k, displacement: 0.0, offset: 0.0 }
     eval (Move (Drag.Move e d) next) = next <$ do
       _dragging %= map _ { displacement = d.offsetY }
@@ -246,15 +258,19 @@ demo =
     , finalizer: Nothing
     }
   where
-    com = zuruzuru mempty pure \{ next, prev, handle, remove, set } ->
+    btn :: forall q. Maybe q -> String -> HH.HTML Void q
+    btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
+    add :: forall q. q -> Maybe (HH.HTML Void q)
+    add q = Just $ btn (Just q) "Add"
+    com = zuruzuru Vertical mempty add \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
-        [ prev "▲"
-        , handle "≡"
-        , next "▼"
+        [ btn prev "▲"
+        , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
+        , btn next "▼"
         , HH.text (" " <> show (i+1) <> ". ")
         , HH.input
           [ HP.value v, HE.onValueInput (Just <<< set) ]
-        , remove "-"
+        , btn (Just remove) "-"
         ]
 
     update = H.put >>> (_ *> inform)
