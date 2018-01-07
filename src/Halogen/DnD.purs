@@ -4,6 +4,7 @@ module Halogen.DnD where
 import Prelude
 
 import Control.Apply (lift2)
+import Control.Extend (extend)
 import Control.Monad.Aff.Class (class MonadAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.AVar (AVAR)
@@ -16,10 +17,10 @@ import Control.MonadZero (guard)
 import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
-import Data.Array (deleteAt, filter, findIndex, findLastIndex, insertAt, length, modifyAt, updateAt, (!!))
+import Data.Array (deleteAt, filter, findIndex, findLastIndex, insertAt, length, updateAt, (!!))
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
-import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=))
+import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Monoid (class Monoid, mempty)
@@ -47,7 +48,7 @@ data Query a
   | Dragging String MouseEvent a
   | Move Drag.DragEvent a
   | DragTo Int a
-  | Update Int String a
+  | Update String String a
 
 type State =
   { values :: Array (Keyed String)
@@ -80,7 +81,7 @@ initialState :: Array String -> State
 initialState vs = { values: addKeys vs, supply: length vs, dragging: Nothing }
 
 addKeys :: forall a. Array a -> Array (Keyed a)
-addKeys = mapWithIndex (Tuple <<< show)
+addKeys = mapWithIndex (Tuple <<< append "item" <<< show)
 
 surroundMapWithIndices :: forall m a. Monoid m =>
   (Int -> m) ->
@@ -134,10 +135,7 @@ dnd =
           , HH.input
             [ HP.ref (label k)
             , HP.value v
-            , HE.onValueInput (HE.input (Update i <<< id))
-            -- , HE.onClick (HE.input (Update <<< mouseEventToEvent))
-            -- , HE.onKeyUp (HE.input (Update <<< keyboardEventToEvent))
-            -- , HE.onFocus (HE.input (Update <<< focusEventToEvent))
+            , HE.onValueInput (HE.input (Update k <<< id))
             ]
           , but "-" (Remove k)
           ]
@@ -160,26 +158,20 @@ dnd =
     eval :: Query ~> H.ComponentDSL State Query q m
     eval (Set values next) = next <$ do
       H.put (initialState values)
-    eval (Update i v next) = next <$ do
-      _values %= (fromMaybe <*> modifyAt i (_ $> v))
+    eval (Update k v next) = next <$ do
+      _values %= map (extend \(Tuple k' v') -> if k == k' then v else v')
     eval (Add i next) = next <$ do
-      -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
-      k <- show <$> fresh'
+      k <- append "item" <<< show <$> fresh'
       _values %= (fromMaybe <*> insertAt i (Tuple k mempty))
-      -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
     eval (Remove k next) = next <$ do
-      -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
       _values %= filter (fst >>> notEq k)
-      -- getPoses >>= H.liftEff <<< log <<< unsafeCoerce
     eval (Swap i j next) = next <$ runMaybeT do
       values <- H.lift $ H.gets (view _values)
       a <- MaybeT $ pure (values !! i)
       b <- MaybeT $ pure (values !! j)
       v' <- MaybeT $ pure (updateAt i b values)
       v'' <- MaybeT $ pure (updateAt j a v')
-      -- H.lift $ getPoses >>= H.liftEff <<< log <<< unsafeCoerce
       _values .= v''
-      -- H.lift $ getPoses >>= H.liftEff <<< log <<< unsafeCoerce
     eval (DragTo i' next) = next <$ runMaybeT do
       dragging <- MaybeT $ H.gets $ view _dragging
       let k = dragging.key
@@ -193,16 +185,12 @@ dnd =
       newPos <- getPos k
       _offset += (newPos - oldPos)
     eval (Dragging k e next) = next <$ runMaybeT do
-      -- H.liftEff $ logShow i
       H.lift $ H.subscribe $ Drag.dragEventSource e \e -> Just $ Move e Listening
-      H.gets (view _values) >>= H.liftEff <<< logShow
-      _dragging .= Just { key: k, displacement: 0.0, offset: 0.0 }
+      _dragging ?= { key: k, displacement: 0.0, offset: 0.0 }
     eval (Move e next) = next <$ case e of
       Drag.Move e d -> do
-        -- H.liftEff $ logShow d.offsetY
         _dragging %= map _ { displacement = d.offsetY }
         poses <- getPoses
-        -- H.liftEff $ log $ unsafeCoerce poses
         void $ runMaybeT do
           k <- MaybeT $ H.gets $ preview _dragKey
           values <- H.gets (view _values)
@@ -213,7 +201,6 @@ dnd =
             -- be the index that this should go to
             least = fromMaybe i $ poses # findIndex (maybe false (_ >= p))
             most = fromMaybe i $ poses # findLastIndex (maybe false (_ <= p))
-          -- H.liftEff $ logShow [least, i, most]
           guard (least < most)
           let
             i'
@@ -221,22 +208,20 @@ dnd =
               | least < i && most == i = least
               | otherwise = i
           guard (i /= i') -- redundant, but just to be safe
-          -- H.liftEff $ logShow i'
           H.lift $ eval (DragTo i' unit)
       Drag.Done e -> do
-        -- H.liftEff $ log "Done"
         _dragging .= Nothing
 
 data DemoQuery a
   = Receive Void a
   | Reset (Array String) a
 
-demo :: forall m eff.
+demo :: forall u v m eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
-  H.Component HH.HTML DemoQuery Unit Void m
+  H.Component HH.HTML DemoQuery u v m
 demo =
   H.lifecycleParentComponent
-    { initialState: const ["1","2","3"]
+    { initialState: const ["","",""]
     , render
     , eval
     , receiver: const Nothing
@@ -249,14 +234,15 @@ demo =
     update = H.put >>> (_ *> inform)
     inform = do
       r <- H.get
-      H.liftEff $ log $ unsafeCoerce r
+      H.liftEff $ logShow r
 
     render :: Array String -> H.ParentHTML DemoQuery Query Unit m
     render s = HH.div_ [HH.slot unit com s (HE.input Receive)]
 
-    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery Query Unit Void m
+    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery Query Unit v m
     eval (Reset v a) = a <$ do
       update v
+      H.liftEff $ log "Update"
     eval (Receive v a) = pure a
 
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
