@@ -9,8 +9,7 @@
   "dependencies": {
     "purescript-prelude": "^3.1.1",
     "purescript-console": "^3.0.0",
-    "purescript-halogen": "^3.0.1",
-    "purescript-textcursor": "^0.1.1"
+    "purescript-halogen": "^3.0.1"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"
