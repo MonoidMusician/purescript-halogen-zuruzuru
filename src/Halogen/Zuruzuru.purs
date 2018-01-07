@@ -1,4 +1,16 @@
-module Halogen.Zuruzuru where
+module Halogen.Zuruzuru
+  ( zuruzuru
+  , Direction(..)
+  , Helpers
+  , Handle
+  , Item
+  , Query(..)
+  , State
+  , DragState
+  , Keyed
+  , Key
+  , main
+  ) where
 
 
 import Prelude
@@ -37,28 +49,50 @@ import Halogen.HTML.Properties as HP
 import Halogen.VDom.Driver (runUI)
 import Unsafe.Coerce (unsafeCoerce)
 
-type Keyed = Tuple String
+-- | An element with a key (string), pretty simple.
+type Keyed = Tuple Key
 
+-- | Items are kept track of with a string key, for Halogen's keyed elements.
+type Key = String
+
+-- | Query for the component.
 data Query o e a
-  = Set (Array e) a
+  -- | Reset all the items in this component
+  = Reset (Array e) a
+  -- | Add a component at this index (between 0 and the length of the existing
+  -- | elements, inclusive)
   | Add Int a
-  | Remove String a
-  | Swap Int Int a
-  | Dragging String MouseEvent a
-  | Move Drag.DragEvent a
-  | DragTo Int a
+  -- | Set the item at the corresponding key to that value.
   | Update String e a
+  -- | Remove the item with this key
+  | Remove Key a
+  -- | Swap the items at the corresponding indices.
+  | Swap Int Int a
+  -- | Start dragging the item with corresponding key.
+  | Dragging Key MouseEvent a
+  -- | Used to communicate with the SlamData Drag API, for when the mouse moves
+  -- | or releases.
+  | Move Drag.DragEvent a
+  -- | Finalize a drag, placing the dragged item at this index.
+  | DragTo Int a
+  -- | Raise an output through the component.
   | Output o a
 
+-- | The state of the component.
 type State e =
   { values :: Array (Keyed e)
   , dragging :: Maybe DragState
   , supply :: Int
   }
 
+-- | State maintained while dragging. Together the numbers are used to
+-- | translate the corresponding item (using a CSS transform).
 type DragState =
-  { key :: String
+  { -- | The key of the item being dragged
+    key :: String
+  -- | The offset from its original position, whence it was dragged
   , offset :: Number
+  -- | The displacement of the mouse from the start of the drag
   , displacement :: Number
   }
 
@@ -123,7 +157,17 @@ type Item e =
 -- | a (horizontal) scrollbar when needed.
 data Direction = Vertical | Horizontal
 
--- | Render a `zuruzuru` component!
+-- | Render a `zuruzuru` component! Allows a list of components to be edited
+-- | and rearranged.
+-- |
+-- | `zuruzuru dir default addBtn render1` takes
+-- |   - A direction (Horizontal or Vertical) for the list
+-- |   - A default value used for adding new items
+-- |   - A way of (maybe) rendering a button to add items (in between each item
+-- |     and at the start and end of the list)
+-- |   - A way of (definitely) rendering each list item, given certain queries
+-- |     (see `Helpers`), an `onMouseDown` property for the drag handle, and
+-- |     information about the item (including its position, see `Item`)
 zuruzuru :: forall m e o eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
   Direction ->
@@ -140,12 +184,12 @@ zuruzuru dir default addBtn render1 =
     { initialState
     , render
     , eval
-    , receiver: HE.input Set
+    , receiver: HE.input Reset
     , initializer: Nothing
     , finalizer: Nothing
     }
   where
-    label i = H.RefLabel ("textcursor-component" <> i) :: H.RefLabel
+    label i = H.RefLabel ("zuruzuru-component" <> i) :: H.RefLabel
 
     item k props children = [ Tuple k (HH.div props children) ]
     adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) [] [ b ]
@@ -170,7 +214,7 @@ zuruzuru dir default addBtn render1 =
 
     mid = _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
 
-    getPos :: String -> MaybeT (H.ComponentDSL (State e) (Query o e) o m) Number
+    getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) o m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
       mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
@@ -186,7 +230,7 @@ zuruzuru dir default addBtn render1 =
     eval :: Query o e ~> H.ComponentDSL (State e) (Query o e) o m
     eval (Output o next) = next <$ do
       H.raise o
-    eval (Set values next) = next <$ do
+    eval (Reset values next) = next <$ do
       H.put (initialState values)
     eval (Update k v next) = next <$ do
       _values %= map (extend \(Tuple k' v') -> if k == k' then v else v')
@@ -243,7 +287,6 @@ zuruzuru dir default addBtn render1 =
 
 data DemoQuery a
   = Receive Void a
-  | Reset (Array String) a
 
 demo :: forall u v m eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
@@ -282,10 +325,10 @@ demo =
     render s = HH.div_ [HH.slot unit com s (HE.input Receive)]
 
     eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query Void String) Unit v m
-    eval (Reset v a) = a <$ do
-      update v
+    eval (Receive v a) = a <$ do
       H.liftEff $ log "Update"
-    eval (Receive v a) = pure a
+      update (absurd v)
 
+-- | Demo app.
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
 main = runHalogenAff $ awaitBody >>= runUI demo unit

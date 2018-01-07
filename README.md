@@ -1,1 +1,5 @@
-purescript-halogen-textcursor
+A simple list reordering component, drag and drop style. Native Halogen, no JS
+was harmed in the making of this project.
+
+# Demo
+https://monoidmusician.github.io/purescript-halogen-zuruzuru/index.html
