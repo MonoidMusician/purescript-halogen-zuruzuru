@@ -1,5 +1,6 @@
 module Halogen.Zuruzuru
   ( zuruzuru
+  , zuru
   , Direction(..)
   , Helpers
   , Handle
@@ -12,6 +13,7 @@ module Halogen.Zuruzuru
   , DragState
   , Keyed
   , Key
+  , SimpleHTML
   , main
   ) where
 
@@ -33,8 +35,9 @@ import Control.MonadZero (guard)
 import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
-import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, take, updateAt, (!!))
-import Data.Either (Either(..), either)
+import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, updateAt, (!!))
+import Data.Const (Const)
+import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=), (?=))
@@ -67,8 +70,8 @@ data Query o e a
   -- | Add a component at this index (between 0 and the length of the existing
   -- | elements, inclusive)
   | Add Int a
-  -- | Set the item at the corresponding key to that value.
-  | Update String e a
+  -- | Update the item at the corresponding key, providing a new value from an old value.
+  | Update String (e -> e) a
   -- | Remove the item with this key
   | Remove Key a
   -- | Swap the items at the corresponding indices.
@@ -86,6 +89,9 @@ data Query o e a
 -- | The output message from the component.
 data Message e
   = NewState (Array e)
+  | Preview (Array e)
+  | DragStart
+  | DragEnd
 
 -- | Either a message from the component or the out passed through the component.
 type Output o e = Either (Message e) o
@@ -143,20 +149,22 @@ surroundMapWithIndices m f as = (_ <> m (length as)) $
 -- | The (opaque) queries to perform certain actions on an item.
 type Helpers o q e =
   { -- | Swap this item with the previous one, if not the first
-    prev :: Maybe q
+    prev :: Maybe (q Unit)
   -- | Swap this item with the next one, if not the last
-  , next :: Maybe q
+  , next :: Maybe (q Unit)
   -- | Remove this item
-  , remove :: q
+  , remove :: q Unit
   -- | Give this item a new value
-  , set :: e -> q
+  , set :: e -> q Unit
+  -- | Modify this item's value
+  , modify :: (e -> e) -> q Unit
   -- | Lift an output query through the component
-  , output :: o -> q
+  , output :: o -> q Unit
   }
 
 -- | The property for a handler. No in the `Helpers` record because records
 -- | hate impredicativity.
-type Handle q = forall r. HH.IProp ( onMouseDown :: MouseEvent | r ) q
+type Handle q = forall r. H.IProp ( onMouseDown :: MouseEvent | r ) q
 
 -- | Information about an item stored in state.
 type Item e =
@@ -172,6 +180,22 @@ type Item e =
 -- | a (horizontal) scrollbar when needed.
 data Direction = Vertical | Horizontal
 
+type SimpleHTML q m = H.ParentHTML q (Const Void) Void m
+
+-- | `zuruzuru` minus the higher-order parent component junk.
+zuru :: forall m e o eff.
+  MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+  Direction ->
+  -- | Default value
+  e ->
+  -- | Render a button for adding a component
+  (forall q. q Unit -> Maybe (SimpleHTML q m)) ->
+  -- | Render an item given certain queries, an `onMouseDown` property for the
+  -- | draggable handle, and information about the item.
+  (forall q. Helpers o q e -> Handle q -> Item e -> SimpleHTML q m) ->
+  H.Component HH.HTML (Query o e) (Array e) (Output o e) m
+zuru = zuruzuru
+
 -- | Render a `zuruzuru` component! Allows a list of components to be edited
 -- | and rearranged.
 -- |
@@ -183,19 +207,20 @@ data Direction = Vertical | Horizontal
 -- |   - A way of (definitely) rendering each list item, given certain queries
 -- |     (see `Helpers`), an `onMouseDown` property for the drag handle, and
 -- |     information about the item (including its position, see `Item`)
-zuruzuru :: forall m e o eff.
+zuruzuru :: forall m e o eff g p.
+  Ord p =>
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
   Direction ->
   -- | Default value
   e ->
   -- | Render a button for adding a component
-  (forall q. q -> Maybe (HH.HTML Void q)) ->
+  (forall q. q Unit -> Maybe (H.ParentHTML q g p m)) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
-  (forall q. Helpers o q e -> Handle q -> Item e -> HH.HTML Void q) ->
+  (forall q. Helpers o q e -> Handle q -> Item e -> H.ParentHTML q g p m) ->
   H.Component HH.HTML (Query o e) (Array e) (Output o e) m
 zuruzuru dir default addBtn render1 =
-  H.lifecycleComponent
+  H.lifecycleParentComponent
     { initialState
     , render
     , eval
@@ -229,7 +254,7 @@ zuruzuru dir default addBtn render1 =
         in "transform: translate" <> axis <> "(" <> show (displacement - offset) <> "px)"
       _ -> ""
 
-    render :: State e -> H.ComponentHTML (Query o e)
+    render :: State e -> H.ParentHTML (Query o e) g p m
     render { values, dragging } = HK.div [topStyle] $ values #
       let top = length values - 1 in
       surroundMapWithIndices adding \i (Tuple k v) ->
@@ -238,7 +263,8 @@ zuruzuru dir default addBtn render1 =
             { prev: guard (i > 0) $> Swap i (i-1) unit
             , next: guard (i < top) $> Swap i (i+1) unit
             , remove: Remove k unit
-            , set: Update k <@> unit
+            , set: \e -> Update k (const e) unit
+            , modify: Update k <@> unit
             , output: Output <@> unit
             } (HE.onMouseDown (HE.input (Dragging k))) { key: k, index: i, value: v }
 
@@ -246,12 +272,12 @@ zuruzuru dir default addBtn render1 =
       Vertical -> _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
       Horizontal -> _.left `lift2 (+)` _.right >>> (_ / 2.0)
 
-    getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) (Output o e) m) Number
+    -- getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) (Output o e) m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
       mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
 
-    getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
+    -- getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
     getPoses =
       H.gets (view _values) >>=
         traverse \(Tuple k _) ->
@@ -261,14 +287,14 @@ zuruzuru dir default addBtn render1 =
 
     notify = H.gets (view _values >>> map extract) >>= H.raise <<< Left <<< NewState
 
-    eval :: Query o e ~> H.ComponentDSL (State e) (Query o e) (Output o e) m
+    eval :: Query o e ~> H.ParentDSL (State e) (Query o e) g p (Output o e) m
     eval (Output o next) = next <$ do
       H.raise $ Right o
     eval (Reset values next) = next <$ do
       H.liftEff $ log "Reset"
       H.put (initialState values)
-    eval (Update k v next) = next <$ do
-      _values %= map (extend \(Tuple k' v') -> if k == k' then v else v')
+    eval (Update k f next) = next <$ do
+      _values %= map (extend \(Tuple k' v) -> if k == k' then f v else v)
       notify
     eval (Add i next) = next <$ do
       k <- append "item" <<< show <$> fresh'
@@ -298,9 +324,11 @@ zuruzuru dir default addBtn render1 =
       newPos <- getPos k
       H.liftEff $ log $ "dragTo offset: " <> show (newPos - oldPos)
       _offset += (newPos - oldPos)
+      H.lift $ H.raise $ Left $ Preview (extract <$> values')
     eval (Dragging k e next) = next <$ runMaybeT do
       H.lift $ H.subscribe $ Drag.dragEventSource e \e' -> Just $ Move e' H.Listening
       _dragging ?= { key: k, displacement: 0.0, offset: 0.0 }
+      H.lift $ H.raise $ Left $ DragStart
     eval (Move (Drag.Move e d) next) = next <$ do
       let
         mouseMovement = case dir of
@@ -330,6 +358,7 @@ zuruzuru dir default addBtn render1 =
     eval (Move (Drag.Done e) next) = next <$ do
       H.liftEff $ log "End"
       _dragging .= Nothing
+      H.raise $ Left $ DragEnd
       notify
 
 data DemoQuery a
@@ -348,11 +377,11 @@ demo =
     , finalizer: Nothing
     }
   where
-    btn :: forall q. Maybe q -> String -> HH.HTML Void q
+    btn :: forall q. Maybe (q Unit) -> String -> SimpleHTML q m
     btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
-    add :: forall q. String -> q -> Maybe (HH.HTML Void q)
+    add :: forall q. String -> q Unit -> Maybe (SimpleHTML q m)
     add t q = Just $ btn (Just q) t
-    com1 = zuruzuru Vertical mempty (add "Add") \{ next, prev, remove, set } -> \handle ->
+    com1 = zuru Vertical mempty (add "Add") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
         , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
@@ -362,7 +391,7 @@ demo =
           [ HP.value v, HE.onValueInput (Just <<< set) ]
         , btn (Just remove) "-"
         ]
-    com2 = zuruzuru Horizontal mempty (add "+") \{ next, prev, remove, set } -> \handle ->
+    com2 = zuru Horizontal mempty (add "+") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
         , HH.input
@@ -388,7 +417,82 @@ demo =
     eval (Receive (NewState v) a) = a <$ do
       H.liftEff $ log "Update"
       update v
+    eval (Receive _ a) = pure a
+
+type StateEl2D = Tuple String (Array String)
+type State2D = Array StateEl2D
+
+demo2 :: forall u v m eff.
+  MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+  H.Component HH.HTML (Tuple (Message StateEl2D)) u v m
+demo2 =
+  H.lifecycleParentComponent
+    { initialState: const
+      [ Tuple "This" ["a"]
+      , Tuple "That" ["b"]
+      , Tuple "These" ["a", "b"]
+      ]
+    , render
+    , eval
+    , receiver: const Nothing
+    , initializer: Nothing
+    , finalizer: Nothing
+    }
+  where
+    btn :: forall q f p. Maybe (q Unit) -> String -> H.ParentHTML q f p m
+    btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
+    add :: forall q f p. String -> q Unit -> Maybe (H.ParentHTML q f p m)
+    add t q = Just $ btn (Just q) t
+    inner = zuru Vertical mempty (add "+") \{ next, prev, remove, set } -> \handle ->
+      \{ key: k, index: i, value: v } -> HH.div_
+        [ btn prev "▲"
+        , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
+        , btn next "▼"
+        , HH.text (" " <> show (i+1) <> ". ")
+        , HH.input
+          [ HP.value v, HE.onValueInput (Just <<< set) ]
+        , btn (Just remove) "-"
+        ]
+    outer = zuruzuru Horizontal mempty (add "Add") \{ next, prev, remove, modify } -> \handle ->
+      \{ key: k, index: i, value: Tuple v cs } -> HH.div_
+        [ btn prev "<"
+        , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
+        , btn next ">"
+        , HH.br_
+        , HH.text (" " <> show (i+1) <> ". ")
+        , HH.input
+          [ HP.value v, HE.onValueInput \v -> Just (modify (setl v)) ]
+        , HH.br_
+        , HH.slot k inner cs (map modify <<< liftThru)
+        , HH.br_
+        , btn (Just remove) "-"
+        ]
+
+    update = H.put >>> (_ *> inform)
+    inform = do
+      r <- H.get
+      H.liftEff $ logShow r
+
+    setl a (Tuple _ b) = Tuple a b
+    setr b (Tuple a _) = Tuple a b
+
+    liftThru (Left (NewState cs)) = Just $ setr cs
+    liftThru _ = Nothing
+
+    lifting (Left m) = Just (Tuple m unit)
+    lifting (Right _) = Nothing
+
+    render :: State2D -> H.ParentHTML (Tuple (Message StateEl2D)) (Query Void StateEl2D) Unit m
+    render s = HH.div_ $
+      [ HH.slot unit outer s lifting
+      ]
+
+    eval :: Tuple (Message StateEl2D) ~> H.ParentDSL State2D (Tuple (Message StateEl2D)) (Query Void StateEl2D) Unit v m
+    eval (Tuple (NewState v) a) = a <$ do
+      H.liftEff $ log "Update"
+      update v
+    eval (Tuple _ a) = pure a
 
 -- | Demo app.
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
-main = runHalogenAff $ awaitBody >>= runUI demo unit
+main = runHalogenAff $ awaitBody >>= runUI demo2 unit
