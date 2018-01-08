@@ -5,6 +5,9 @@ module Halogen.Zuruzuru
   , Handle
   , Item
   , Query(..)
+  , Message(..)
+  , Output
+  , SimpleOutput
   , State
   , DragState
   , Keyed
@@ -16,6 +19,7 @@ module Halogen.Zuruzuru
 import Prelude
 
 import Control.Apply (lift2)
+import Control.Comonad (extract)
 import Control.Extend (extend)
 import Control.Monad.Aff.Class (class MonadAff)
 import Control.Monad.Eff (Eff)
@@ -29,7 +33,8 @@ import Control.MonadZero (guard)
 import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
-import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, updateAt, (!!))
+import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, take, updateAt, (!!))
+import Data.Either (Either(..), either)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=), (?=))
@@ -77,6 +82,16 @@ data Query o e a
   | DragTo Int a
   -- | Raise an output through the component.
   | Output o a
+
+-- | The output message from the component.
+data Message e
+  = NewState (Array e)
+
+-- | Either a message from the component or the out passed through the component.
+type Output o e = Either (Message e) o
+
+-- | No output will be passed through, `Void`
+type SimpleOutput e = Output Void e
 
 -- | The state of the component.
 type State e =
@@ -178,7 +193,7 @@ zuruzuru :: forall m e o eff.
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
   (forall q. Helpers o q e -> Handle q -> Item e -> HH.HTML Void q) ->
-  H.Component HH.HTML (Query o e) (Array e) o m
+  H.Component HH.HTML (Query o e) (Array e) (Output o e) m
 zuruzuru dir default addBtn render1 =
   H.lifecycleComponent
     { initialState
@@ -191,19 +206,34 @@ zuruzuru dir default addBtn render1 =
   where
     label i = H.RefLabel ("zuruzuru-component" <> i) :: H.RefLabel
 
-    item k props children = [ Tuple k (HH.div props children) ]
-    adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) [] [ b ]
-    dragStyle :: forall r i. Maybe DragState -> String -> HP.IProp r i
-    dragStyle dragging key = HP.attr (H.AttrName "style") case dragging of
+    itemStyle :: forall r i. String -> HP.IProp ( style :: String | r ) i
+    itemStyle = HP.attr (H.AttrName "style") <<< (_ <> display) where
+      display = case dir of
+        Horizontal -> "; display: inline-block"
+        Vertical -> "; display: block"
+
+    topStyle :: forall r i. HP.IProp ( style :: String | r ) i
+    topStyle = HP.attr (H.AttrName "style") $ "overflow: auto; " <> case dir of
+      Horizontal -> "white-space: nowrap;"
+      Vertical -> ""
+
+    item k styl props children = [ Tuple k (HH.div ([itemStyle styl] <> props) children) ]
+    adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
+    dragStyle :: forall r i. Maybe DragState -> Key -> String
+    dragStyle dragging key = case dragging of
       Just { key: k, displacement, offset } | k == key ->
-        "transform: translateY(" <> show (displacement - offset) <> "px)"
+        let
+          axis = case dir of
+            Horizontal -> "X"
+            Vertical -> "Y"
+        in "transform: translate" <> axis <> "(" <> show (displacement - offset) <> "px)"
       _ -> ""
 
     render :: State e -> H.ComponentHTML (Query o e)
-    render { values, dragging } = HK.div_ $ values #
+    render { values, dragging } = HK.div [topStyle] $ values #
       let top = length values - 1 in
       surroundMapWithIndices adding \i (Tuple k v) ->
-        item k [ HP.ref (label k), dragStyle dragging k ]
+        item k (dragStyle dragging k) [ HP.ref (label k) ]
           $ pure $ render1
             { prev: guard (i > 0) $> Swap i (i-1) unit
             , next: guard (i < top) $> Swap i (i+1) unit
@@ -212,14 +242,16 @@ zuruzuru dir default addBtn render1 =
             , output: Output <@> unit
             } (HE.onMouseDown (HE.input (Dragging k))) { key: k, index: i, value: v }
 
-    mid = _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
+    mid = case dir of
+      Vertical -> _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
+      Horizontal -> _.left `lift2 (+)` _.right >>> (_ / 2.0)
 
-    getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) o m) Number
+    getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) (Output o e) m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
       mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
 
-    getPoses :: H.ComponentDSL (State e) (Query o e) o m (Array (Maybe Number))
+    getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
     getPoses =
       H.gets (view _values) >>=
         traverse \(Tuple k _) ->
@@ -227,18 +259,24 @@ zuruzuru dir default addBtn render1 =
 
     fresh' = fresh (prop (SProxy :: SProxy "supply"))
 
-    eval :: Query o e ~> H.ComponentDSL (State e) (Query o e) o m
+    notify = H.gets (view _values >>> map extract) >>= H.raise <<< Left <<< NewState
+
+    eval :: Query o e ~> H.ComponentDSL (State e) (Query o e) (Output o e) m
     eval (Output o next) = next <$ do
-      H.raise o
+      H.raise $ Right o
     eval (Reset values next) = next <$ do
+      H.liftEff $ log "Reset"
       H.put (initialState values)
     eval (Update k v next) = next <$ do
       _values %= map (extend \(Tuple k' v') -> if k == k' then v else v')
+      notify
     eval (Add i next) = next <$ do
       k <- append "item" <<< show <$> fresh'
       _values %= (fromMaybe <*> insertAt i (Tuple k default))
+      notify
     eval (Remove k next) = next <$ do
       _values %= filter (fst >>> notEq k)
+      notify
     eval (Swap i j next) = next <$ runMaybeT do
       values <- H.lift $ H.gets (view _values)
       a <- MaybeT $ pure (values !! i)
@@ -246,6 +284,7 @@ zuruzuru dir default addBtn render1 =
       v' <- MaybeT $ pure (updateAt i b values)
       v'' <- MaybeT $ pure (updateAt j a v')
       _values .= v''
+      H.lift $ notify
     eval (DragTo i' next) = next <$ runMaybeT do
       dragging <- MaybeT $ H.gets $ view _dragging
       let k = dragging.key
@@ -257,12 +296,18 @@ zuruzuru dir default addBtn render1 =
         deleteAt i values >>= insertAt i' v
       H.modify _ { values = values' }
       newPos <- getPos k
+      H.liftEff $ log $ "dragTo offset: " <> show (newPos - oldPos)
       _offset += (newPos - oldPos)
     eval (Dragging k e next) = next <$ runMaybeT do
       H.lift $ H.subscribe $ Drag.dragEventSource e \e' -> Just $ Move e' H.Listening
       _dragging ?= { key: k, displacement: 0.0, offset: 0.0 }
     eval (Move (Drag.Move e d) next) = next <$ do
-      _dragging %= map _ { displacement = d.offsetY }
+      let
+        mouseMovement = case dir of
+          Horizontal -> d.offsetX
+          Vertical -> d.offsetY
+      H.liftEff $ logShow mouseMovement
+      _dragging %= map _ { displacement = mouseMovement }
       poses <- getPoses
       runMaybeT do
         k <- MaybeT $ H.gets $ preview _dragKey
@@ -283,10 +328,12 @@ zuruzuru dir default addBtn render1 =
         guard (i /= i') -- redundant, but just to be safe
         H.lift $ eval (DragTo i' unit)
     eval (Move (Drag.Done e) next) = next <$ do
+      H.liftEff $ log "End"
       _dragging .= Nothing
+      notify
 
 data DemoQuery a
-  = Receive Void a
+  = Receive (Message String) a
 
 demo :: forall u v m eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
@@ -303,14 +350,21 @@ demo =
   where
     btn :: forall q. Maybe q -> String -> HH.HTML Void q
     btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
-    add :: forall q. q -> Maybe (HH.HTML Void q)
-    add q = Just $ btn (Just q) "Add"
-    com = zuruzuru Vertical mempty add \{ next, prev, remove, set } -> \handle ->
+    add :: forall q. String -> q -> Maybe (HH.HTML Void q)
+    add t q = Just $ btn (Just q) t
+    com1 = zuruzuru Vertical mempty (add "Add") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
         , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
         , btn next "▼"
         , HH.text (" " <> show (i+1) <> ". ")
+        , HH.input
+          [ HP.value v, HE.onValueInput (Just <<< set) ]
+        , btn (Just remove) "-"
+        ]
+    com2 = zuruzuru Horizontal mempty (add "+") \{ next, prev, remove, set } -> \handle ->
+      \{ key: k, index: i, value: v } -> HH.div_
+        [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
         , HH.input
           [ HP.value v, HE.onValueInput (Just <<< set) ]
         , btn (Just remove) "-"
@@ -321,13 +375,19 @@ demo =
       r <- H.get
       H.liftEff $ logShow r
 
-    render :: Array String -> H.ParentHTML DemoQuery (Query Void String) Unit m
-    render s = HH.div_ [HH.slot unit com s (HE.input Receive)]
+    lifting (Left m) = Just (Receive m unit)
+    lifting (Right m) = Nothing
 
-    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query Void String) Unit v m
-    eval (Receive v a) = a <$ do
+    render :: Array String -> H.ParentHTML DemoQuery (Query Void String) Int m
+    render s = HH.div_ $
+      [ HH.slot 1 com1 s lifting
+      , HH.slot 2 com2 s lifting
+      ]
+
+    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query Void String) Int v m
+    eval (Receive (NewState v) a) = a <$ do
       H.liftEff $ log "Update"
-      update (absurd v)
+      update v
 
 -- | Demo app.
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
