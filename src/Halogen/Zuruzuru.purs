@@ -40,7 +40,7 @@ import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
-import Data.Lens (Lens', Traversal', _Just, preview, view, (%=), (+=), (.=), (?=))
+import Data.Lens (Lens', Traversal', _Just, preview, use, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
 import Data.Monoid (class Monoid, mempty)
@@ -118,7 +118,7 @@ type DragState =
   }
 
 fresh :: forall s m. MonadState s m => Lens' s Int -> m Int
-fresh lens = H.gets (view lens) <* H.modify (lens (_+1))
+fresh lens = use lens <* H.modify (lens (_+1))
 
 _values :: forall e. Lens' (State e) (Array (Keyed e))
 _values = prop (SProxy :: SProxy "values")
@@ -237,8 +237,10 @@ zuruzuru dir default addBtn render1 =
         Horizontal -> "; display: inline-block"
         Vertical -> "; display: block"
 
+    overflow = "overflow: auto; -webkit-overflow-scrolling: touch; "
+
     topStyle :: forall r i. HP.IProp ( style :: String | r ) i
-    topStyle = HP.attr (H.AttrName "style") $ "overflow: auto; " <> case dir of
+    topStyle = HP.attr (H.AttrName "style") $ overflow <> case dir of
       Horizontal -> "white-space: nowrap;"
       Vertical -> ""
 
@@ -279,13 +281,13 @@ zuruzuru dir default addBtn render1 =
 
     -- getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
     getPoses =
-      H.gets (view _values) >>=
+      use _values >>=
         traverse \(Tuple k _) ->
           runMaybeT $ getPos k
 
     fresh' = fresh (prop (SProxy :: SProxy "supply"))
 
-    notify = H.gets (view _values >>> map extract) >>= H.raise <<< Left <<< NewState
+    notify = use _values >>= H.raise <<< Left <<< NewState <<< map extract
 
     eval :: Query o e ~> H.ParentDSL (State e) (Query o e) g p (Output o e) m
     eval (Output o next) = next <$ do
@@ -304,7 +306,7 @@ zuruzuru dir default addBtn render1 =
       _values %= filter (fst >>> notEq k)
       notify
     eval (Swap i j next) = next <$ runMaybeT do
-      values <- H.lift $ H.gets (view _values)
+      values <- use _values
       a <- MaybeT $ pure (values !! i)
       b <- MaybeT $ pure (values !! j)
       v' <- MaybeT $ pure (updateAt i b values)
@@ -312,10 +314,10 @@ zuruzuru dir default addBtn render1 =
       _values .= v''
       H.lift $ notify
     eval (DragTo i' next) = next <$ runMaybeT do
-      dragging <- MaybeT $ H.gets $ view _dragging
+      dragging <- MaybeT $ use _dragging
       let k = dragging.key
       oldPos <- getPos k
-      values <- H.gets (view _values)
+      values <- use _values
       values' <- MaybeT $ pure do
         i <- findIndex (fst >>> eq k) values
         v <- values !! i
@@ -339,7 +341,7 @@ zuruzuru dir default addBtn render1 =
       poses <- getPoses
       runMaybeT do
         k <- MaybeT $ H.gets $ preview _dragKey
-        values <- H.gets (view _values)
+        values <- use _values
         i <- MaybeT $ pure $ findIndex (fst >>> eq k) values
         p <- getPos k
         let
@@ -439,33 +441,48 @@ demo2 =
     , finalizer: Nothing
     }
   where
+    icon :: forall r i. HH.IProp ( "class" :: String | r ) i
+    icon = HP.classes $ map H.ClassName $
+      [ "material-icons" ]
+    but :: forall r i. Boolean -> HH.IProp ( "class" :: String | r ) i
+    but dis = HP.classes $ map H.ClassName $
+      [ "btn" ] <> (guard dis $> "disabled")
+    handle_ :: forall r i. HH.IProp ( "class" :: String | r ) i
+    handle_ = HP.classes $ map H.ClassName $ [ "handle" ]
+
+    number :: forall blah ugh. Int -> HH.HTML blah ugh
+    number i = HH.span
+      [ HP.class_ (H.ClassName "number") ]
+      [ HH.text (" " <> show (i+1) <> ". ") ]
+
     btn :: forall q f p. Maybe (q Unit) -> String -> H.ParentHTML q f p m
-    btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
+    btn q t = (compose (HH.a [but (isNothing q)] <<< pure) <<< HH.i)
+      [ icon, HE.onClick (pure q) ] [ HH.text t ]
     add :: forall q f p. String -> q Unit -> Maybe (H.ParentHTML q f p m)
     add t q = Just $ btn (Just q) t
     inner = zuru Vertical mempty (add "+") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
-        [ btn prev "▲"
-        , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
-        , btn next "▼"
-        , HH.text (" " <> show (i+1) <> ". ")
+        [ btn prev "keyboard_arrow_up"
+        , HH.a [ handle, handle_ ] [ HH.i [ icon ] [ HH.text "menu" ] ]
+        , btn next "keyboard_arrow_down"
+        , number i
         , HH.input
-          [ HP.value v, HE.onValueInput (Just <<< set) ]
-        , btn (Just remove) "-"
+          [ HP.value v, HE.onValueInput (Just <<< set), HP.placeholder "Type of argument" ]
+        , btn (Just remove) "remove"
         ]
-    outer = zuruzuru Horizontal mempty (add "Add") \{ next, prev, remove, modify } -> \handle ->
-      \{ key: k, index: i, value: Tuple v cs } -> HH.div_
-        [ btn prev "<"
-        , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
-        , btn next ">"
+    outer = zuruzuru Horizontal mempty (add "create_new_folder") \{ next, prev, remove, modify } -> \handle ->
+      \{ key: k, index: i, value: Tuple v cs } -> HH.div [ HP.class_ (H.ClassName "card") ]
+        [ btn prev "arrow_back"
+        , HH.a [ handle, handle_ ] [ HH.i [ icon ] [ HH.text "menu" ] ]
+        , btn next "arrow_forward"
         , HH.br_
-        , HH.text (" " <> show (i+1) <> ". ")
+        , number i
         , HH.input
-          [ HP.value v, HE.onValueInput \v -> Just (modify (setl v)) ]
+          [ HP.value v, HE.onValueInput \v -> Just (modify (setl v)), HP.placeholder "Constructor name" ]
         , HH.br_
         , HH.slot k inner cs (map modify <<< liftThru)
         , HH.br_
-        , btn (Just remove) "-"
+        , btn (Just remove) "delete"
         ]
 
     update = H.put >>> (_ *> inform)
@@ -483,7 +500,7 @@ demo2 =
     lifting (Right _) = Nothing
 
     render :: State2D -> H.ParentHTML (Tuple (Message StateEl2D)) (Query Void StateEl2D) Unit m
-    render s = HH.div_ $
+    render s = HH.div [HP.class_ (H.ClassName "component") ] $
       [ HH.slot unit outer s lifting
       ]
 

@@ -2,7 +2,55 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:foo="http://www.w3.org/2000/svg">
   <head>
     <title>Zuruzuru list reordering demo</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Nova+Mono" rel="stylesheet">
     <style>
+      body {
+        font-family: "Nova Mono", monospace;
+        font-size: 24px;
+      }
+      a {
+        color: purple;
+      }
+      a.disabled {
+        color: gray;
+      }
+      a.btn:not(.disabled):active {
+        color: rgb(232, 79, 189);
+      }
+      a.handle {
+        cursor: move;
+      }
+      input {
+        border: 1px solid transparent;
+        font: inherit;
+      }
+      input:focus {
+        border: 1px solid purple;
+        outline: none;
+      }
+      span.number {
+        color: gray;
+      }
+      /* Stolen from https://codepen.io/travisw/pen/xOvJYQ */
+      .card {
+        background-color: #fff;
+        border-radius: 2px;
+        box-shadow: -1px 2px 4px rgba(0,0,0,.25), 1px 1px 3px rgba(0,0,0,.1);
+      }
+      .component > div > div {
+        margin-left: 5px;
+        margin-bottom: 20px;
+        margin-right: 5px;
+        vertical-align: top;
+      }
+      .card > div > div:nth-child(odd) > a {
+        margin-left: 28.5px;
+      }
+      /* This doesn't really work but YOLO */
+      .component > div > div:nth-child(odd) {
+        vertical-align: middle;
+      }
     </style>
   </head>
   <body>
