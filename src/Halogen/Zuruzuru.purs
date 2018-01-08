@@ -35,6 +35,7 @@ import Control.MonadZero (guard)
 import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
+import DOM.Node.ParentNode (QuerySelector(..))
 import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, updateAt, (!!))
 import Data.Const (Const)
 import Data.Either (Either(..))
@@ -48,13 +49,14 @@ import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Halogen as H
-import Halogen.Aff (awaitBody, runHalogenAff)
+import Halogen.Aff (awaitLoad, runHalogenAff, selectElement)
 import Halogen.Component.Utils.Drag as Drag
 import Halogen.HTML as HH
 import Halogen.HTML.Elements.Keyed as HK
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Halogen.VDom.Driver (runUI)
+import Partial.Unsafe (unsafePartial)
 import Unsafe.Coerce (unsafeCoerce)
 
 -- | An element with a key (string), pretty simple.
@@ -174,6 +176,7 @@ type Item e =
   , index :: Int
   -- | The current value of this item
   , value :: e
+  , dragged :: Boolean
   }
 
 -- | Whether the list is rendered vertically or horizontally. Horizontal has
@@ -246,6 +249,9 @@ zuruzuru dir default addBtn render1 =
 
     item k styl props children = [ Tuple k (HH.div ([itemStyle styl] <> props) children) ]
     adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
+    isDragging dragging key = case dragging of
+      Just { key: k } | k == key -> true
+      _ -> false
     dragStyle :: forall r i. Maybe DragState -> Key -> String
     dragStyle dragging key = case dragging of
       Just { key: k, displacement, offset } | k == key ->
@@ -258,8 +264,10 @@ zuruzuru dir default addBtn render1 =
 
     render :: State e -> H.ParentHTML (Query o e) g p m
     render { values, dragging } = HK.div [topStyle] $ values #
-      let top = length values - 1 in
-      surroundMapWithIndices adding \i (Tuple k v) ->
+      let top = length values - 1
+          isDragged = isDragging dragging
+      in surroundMapWithIndices adding \i (Tuple k v) ->
+        let dragged = isDragged k in
         item k (dragStyle dragging k) [ HP.ref (label k) ]
           $ pure $ render1
             { prev: guard (i > 0) $> Swap i (i-1) unit
@@ -268,7 +276,8 @@ zuruzuru dir default addBtn render1 =
             , set: \e -> Update k (const e) unit
             , modify: Update k <@> unit
             , output: Output <@> unit
-            } (HE.onMouseDown (HE.input (Dragging k))) { key: k, index: i, value: v }
+            } (HE.onMouseDown (HE.input (Dragging k)))
+            { key: k, index: i, value: v, dragged }
 
     mid = case dir of
       Vertical -> _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
@@ -444,46 +453,61 @@ demo2 =
     icon :: forall r i. HH.IProp ( "class" :: String | r ) i
     icon = HP.classes $ map H.ClassName $
       [ "material-icons" ]
-    but :: forall r i. Boolean -> HH.IProp ( "class" :: String | r ) i
-    but dis = HP.classes $ map H.ClassName $
-      [ "btn" ] <> (guard dis $> "disabled")
-    handle_ :: forall r i. HH.IProp ( "class" :: String | r ) i
-    handle_ = HP.classes $ map H.ClassName $ [ "handle" ]
+    but :: forall r i. String -> Boolean -> HH.IProp ( "class" :: String | r ) i
+    but c dis = HP.classes $ map H.ClassName $
+      [ "btn", c ] <> (guard dis $> "disabled")
+    handle_ :: forall r i. Boolean -> HH.IProp ( "class" :: String | r ) i
+    handle_ b = HP.classes $ map H.ClassName $ [ "handle", size b ]
 
-    number :: forall blah ugh. Int -> HH.HTML blah ugh
-    number i = HH.span
-      [ HP.class_ (H.ClassName "number") ]
+    size = if _ then "big" else "small"
+    whenDragged = if _ then " dragged" else ""
+
+    number :: forall a b. Boolean -> Int -> HH.HTML a b
+    number b i = HH.span
+      [ HP.class_ (H.ClassName $ "number " <> size b) ]
       [ HH.text (" " <> show (i+1) <> ". ") ]
 
-    btn :: forall q f p. Maybe (q Unit) -> String -> H.ParentHTML q f p m
-    btn q t = (compose (HH.a [but (isNothing q)] <<< pure) <<< HH.i)
+    btn :: forall q f p. String -> Maybe (q Unit) -> String -> H.ParentHTML q f p m
+    btn c q t = (compose (HH.a [but c (isNothing q)] <<< pure) <<< HH.i)
       [ icon, HE.onClick (pure q) ] [ HH.text t ]
-    add :: forall q f p. String -> q Unit -> Maybe (H.ParentHTML q f p m)
-    add t q = Just $ btn (Just q) t
-    inner = zuru Vertical mempty (add "+") \{ next, prev, remove, set } -> \handle ->
-      \{ key: k, index: i, value: v } -> HH.div_
-        [ btn prev "keyboard_arrow_up"
-        , HH.a [ handle, handle_ ] [ HH.i [ icon ] [ HH.text "menu" ] ]
-        , btn next "keyboard_arrow_down"
-        , number i
-        , HH.input
-          [ HP.value v, HE.onValueInput (Just <<< set), HP.placeholder "Type of argument" ]
-        , btn (Just remove) "remove"
-        ]
-    outer = zuruzuru Horizontal mempty (add "create_new_folder") \{ next, prev, remove, modify } -> \handle ->
-      \{ key: k, index: i, value: Tuple v cs } -> HH.div [ HP.class_ (H.ClassName "card") ]
-        [ btn prev "arrow_back"
-        , HH.a [ handle, handle_ ] [ HH.i [ icon ] [ HH.text "menu" ] ]
-        , btn next "arrow_forward"
-        , HH.br_
-        , number i
-        , HH.input
-          [ HP.value v, HE.onValueInput \v -> Just (modify (setl v)), HP.placeholder "Constructor name" ]
-        , HH.br_
-        , HH.slot k inner cs (map modify <<< liftThru)
-        , HH.br_
-        , btn (Just remove) "delete"
-        ]
+    add :: forall q f p. Boolean -> String -> q Unit -> Maybe (H.ParentHTML q f p m)
+    add b t q = Just $ btn ("add " <> size b) (Just q) t
+    inner = zuru Vertical mempty (add false "+")
+      \{ next, prev, remove, set } -> \handle ->
+        \{ key: k, index: i, value: v, dragged } -> HH.div
+          [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
+          [ btn "swap small" prev "keyboard_arrow_up"
+          , HH.a [ handle, handle_ false ] [ HH.i [ icon ] [ HH.text "menu" ] ]
+          , btn "swap small" next "keyboard_arrow_down"
+          , number false i
+          , HH.input
+            [ HP.class_ $ H.ClassName "type"
+            , HP.placeholder "Type of argument"
+            , HP.value v
+            , HE.onValueInput \v -> Just (set v)
+            ]
+          , btn "remove small" (Just remove) "remove"
+          ]
+    outer = zuruzuru Horizontal mempty (add true "create_new_folder")
+      \{ next, prev, remove, modify } -> \handle ->
+        \{ key: k, index: i, value: Tuple v cs, dragged } -> HH.div
+          [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
+          [ btn "swap big" prev "arrow_back"
+          , HH.a [ handle, handle_ true ] [ HH.i [ icon ] [ HH.text "menu" ] ]
+          , btn "swap big" next "arrow_forward"
+          , HH.br_
+          , number true i
+          , HH.input
+            [ HP.class_ $ H.ClassName "constructor"
+            , HP.placeholder "Constructor name"
+            , HP.value v
+            , HE.onValueInput \v -> Just (modify (setl v))
+            ]
+          , HH.br_
+          , HH.slot k inner cs (map modify <<< liftThru)
+          , HH.br_
+          , btn "remove big" (Just remove) "delete"
+          ]
 
     update = H.put >>> (_ *> inform)
     inform = do
@@ -512,4 +536,7 @@ demo2 =
 
 -- | Demo app.
 main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
-main = runHalogenAff $ awaitBody >>= runUI demo2 unit
+main = runHalogenAff $ unsafePartial do
+  awaitLoad
+  Just e <- selectElement (QuerySelector "#app")
+  runUI demo2 unit e

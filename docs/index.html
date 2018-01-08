@@ -7,20 +7,39 @@
     <style>
       body {
         font-family: "Nova Mono", monospace;
-        font-size: 24px;
+        font-size: 16px;
       }
-      a {
+      .material-icons {
+        font-size: inherit;
+      }
+      .btn.big > .material-icons, .handle.big > .material-icons {
+        font-size: 20px;
+      }
+      .btn.add.big > .material-icons, .btn.remove.big > .material-icons {
+        font-size: 22px;
+      }
+      a.btn, a.handle {
         color: purple;
       }
-      a.disabled {
+      a.btn.disabled {
         color: gray;
       }
-      a.btn:not(.disabled):active {
+      /* Pressed buttons and dragged handles */
+      a.btn:not(.disabled):active, .dragged > .handle {
         color: rgb(232, 79, 189);
       }
-      a.handle {
+      .handle {
         cursor: move;
+        /* ugh rly */
+        -webkit-touch-callout: none; /* iOS Safari */
+        -webkit-user-select: none; /* Safari */
+         -khtml-user-select: none; /* Konqueror HTML */
+           -moz-user-select: none; /* Firefox */
+            -ms-user-select: none; /* Internet Explorer/Edge */
+                user-select: none; /* Non-prefixed version, currently
+                                      supported by Chrome and Opera */
       }
+      /* I like sort of transparent input boxes that don't look terribly different */
       input {
         border: 1px solid transparent;
         font: inherit;
@@ -29,8 +48,13 @@
         border: 1px solid purple;
         outline: none;
       }
+      /* The numbering isn't really important to see */
       span.number {
         color: gray;
+      }
+      /* This was too close to the left for my liking */
+      .number.big {
+        margin-left: 4px;
       }
       /* Stolen from https://codepen.io/travisw/pen/xOvJYQ */
       .card {
@@ -38,22 +62,40 @@
         border-radius: 2px;
         box-shadow: -1px 2px 4px rgba(0,0,0,.25), 1px 1px 3px rgba(0,0,0,.1);
       }
+      /* Each item in the horizontal zuruzuru */
       .component > div > div {
         margin-left: 5px;
         margin-bottom: 20px;
         margin-right: 5px;
         vertical-align: top;
       }
-      .card > div > div:nth-child(odd) > a {
-        margin-left: 28.5px;
+      /* The components with content in the horizontal zuruzuru */
+      .constructor {
+      }
+      /* Each item in the vertical zuru */
+      .constructor > div > div {
+      }
+      /* The components with content in the vertical zuru */
+      .type {
+      }
+      /* Try to space the `+` over the middle of the handle */
+      .btn.add.small {
+        margin-left: 1.225em;
+      }
+      /* The inline buttons seem to align better with this */
+      .type .btn, .type .handle {
+        vertical-align: middle;
       }
       /* This doesn't really work but YOLO */
-      .component > div > div:nth-child(odd) {
+      .btn.add.big {
         vertical-align: middle;
       }
     </style>
   </head>
   <body>
+    <h1>A demo of Halogen Zuruzuru</h1>
+    <p>Input an ADT! Use the hamburger menu handles to reorder each part around.
+    <div id="app"></div>
     <script src="index.js"></script>
   </body>
 </html>
