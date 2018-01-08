@@ -42419,6 +42419,7 @@ var DOM_Event_Types = require("../DOM.Event.Types");
 var DOM_HTML_HTMLElement = require("../DOM.HTML.HTMLElement");
 var Data_Array = require("../Data.Array");
 var Data_Boolean = require("../Data.Boolean");
+var Data_Const = require("../Data.Const");
 var Data_Either = require("../Data.Either");
 var Data_Eq = require("../Data.Eq");
 var Data_EuclideanRing = require("../Data.EuclideanRing");
@@ -42476,6 +42477,35 @@ var NewState = (function () {
         return new NewState(value0);
     };
     return NewState;
+})();
+
+// | The output message from the component.
+var Preview = (function () {
+    function Preview(value0) {
+        this.value0 = value0;
+    };
+    Preview.create = function (value0) {
+        return new Preview(value0);
+    };
+    return Preview;
+})();
+
+// | The output message from the component.
+var DragStart = (function () {
+    function DragStart() {
+
+    };
+    DragStart.value = new DragStart();
+    return DragStart;
+})();
+
+// | The output message from the component.
+var DragEnd = (function () {
+    function DragEnd() {
+
+    };
+    DragEnd.value = new DragEnd();
+    return DragEnd;
 })();
 
 // | Query for the component.
@@ -42666,8 +42696,8 @@ var fresh = function (dictMonadState) {
         })));
     };
 };
-var addKeys = Data_FunctorWithIndex.mapWithIndex(Data_FunctorWithIndex.functorWithIndexArray)(function ($155) {
-    return Data_Tuple.Tuple.create("item" + Data_Show.show(Data_Show.showInt)($155));
+var addKeys = Data_FunctorWithIndex.mapWithIndex(Data_FunctorWithIndex.functorWithIndexArray)(function ($212) {
+    return Data_Tuple.Tuple.create("item" + Data_Show.show(Data_Show.showInt)($212));
 });
 var initialState = function (vs) {
     return {
@@ -42687,17 +42717,17 @@ var _dragging = function (dictStrong) {
     }))()()(Data_Symbol.SProxy.value)(dictStrong);
 };
 var _offset = function (dictWander) {
-    return function ($156) {
+    return function ($213) {
         return _dragging(dictWander.Strong0())(Data_Lens_Prism_Maybe._Just(dictWander.Choice1())(Data_Lens_Record.prop(new Data_Symbol.IsSymbol(function () {
             return "offset";
-        }))()()(Data_Symbol.SProxy.value)(dictWander.Strong0())($156)));
+        }))()()(Data_Symbol.SProxy.value)(dictWander.Strong0())($213)));
     };
 };
 var _dragKey = function (dictWander) {
-    return function ($157) {
+    return function ($214) {
         return _dragging(dictWander.Strong0())(Data_Lens_Prism_Maybe._Just(dictWander.Choice1())(Data_Lens_Record.prop(new Data_Symbol.IsSymbol(function () {
             return "key";
-        }))()()(Data_Symbol.SProxy.value)(dictWander.Strong0())($157)));
+        }))()()(Data_Symbol.SProxy.value)(dictWander.Strong0())($214)));
     };
 };
 
@@ -42712,312 +42742,332 @@ var _dragKey = function (dictWander) {
 // |   - A way of (definitely) rendering each list item, given certain queries
 // |     (see `Helpers`), an `onMouseDown` property for the drag handle, and
 // |     information about the item (including its position, see `Item`)
-var zuruzuru = function (dictMonadAff) {
-    return function (dir) {
-        return function ($$default) {
-            return function (addBtn) {
-                return function (render1) {
-                    var topStyle = Halogen_HTML_Properties.attr("style")("overflow: auto; " + (function () {
-                        if (dir instanceof Horizontal) {
-                            return "white-space: nowrap;";
-                        };
-                        if (dir instanceof Vertical) {
-                            return "";
-                        };
-                        throw new Error("Failed pattern match at Halogen.Zuruzuru line 216, column 69 - line 220, column 5: " + [ dir.constructor.name ]);
-                    })());
-                    var notify = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(function ($158) {
-                        return Data_Functor.map(Data_Functor.functorArray)(Control_Comonad.extract(Data_Tuple.comonadTuple))(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))($158));
-                    }))(function ($159) {
-                        return Halogen_Query_HalogenM.raise(Data_Either.Left.create(NewState.create($159)));
-                    });
-                    var mid = (function () {
-                        if (dir instanceof Vertical) {
-                            return function ($160) {
-                                return (function (v) {
-                                    return v / 2.0;
-                                })(Control_Apply.lift2(Control_Apply.applyFn)(Data_Semiring.add(Data_Semiring.semiringNumber))(function (v) {
-                                    return v.top;
-                                })(function (v) {
-                                    return v.bottom;
-                                })($160));
-                            };
-                        };
-                        if (dir instanceof Horizontal) {
-                            return function ($161) {
-                                return (function (v) {
-                                    return v / 2.0;
-                                })(Control_Apply.lift2(Control_Apply.applyFn)(Data_Semiring.add(Data_Semiring.semiringNumber))(function (v) {
-                                    return v.left;
-                                })(function (v) {
-                                    return v.right;
-                                })($161));
-                            };
-                        };
-                        throw new Error("Failed pattern match at Halogen.Zuruzuru line 245, column 11 - line 247, column 61: " + [ dir.constructor.name ]);
-                    })();
-                    var label = function (i) {
-                        return "zuruzuru-component" + i;
-                    };
-                    var itemStyle = (function () {
-                        var display = (function () {
+var zuruzuru = function (dictOrd) {
+    return function (dictMonadAff) {
+        return function (dir) {
+            return function ($$default) {
+                return function (addBtn) {
+                    return function (render1) {
+                        var topStyle = Halogen_HTML_Properties.attr("style")("overflow: auto; " + (function () {
                             if (dir instanceof Horizontal) {
-                                return "; display: inline-block";
+                                return "white-space: nowrap;";
                             };
                             if (dir instanceof Vertical) {
-                                return "; display: block";
+                                return "";
                             };
-                            throw new Error("Failed pattern match at Halogen.Zuruzuru line 211, column 17 - line 215, column 5: " + [ dir.constructor.name ]);
-                        })();
-                        return function ($162) {
-                            return Halogen_HTML_Properties.attr("style")((function (v) {
-                                return v + display;
-                            })($162));
-                        };
-                    })();
-                    var item = function (k) {
-                        return function (styl) {
-                            return function (props) {
-                                return function (children) {
-                                    return [ new Data_Tuple.Tuple(k, Halogen_HTML_Elements.div(Data_Semigroup.append(Data_Semigroup.semigroupArray)([ itemStyle(styl) ])(props))(children)) ];
-                                };
-                            };
-                        };
-                    };
-                    var getPos = function (k) {
-                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Halogen_Query_HalogenM.getRef(label(k))))(function (v) {
-                            return Data_Functor.map(Control_Monad_Maybe_Trans.functorMaybeT(Halogen_Query_HalogenM.functorHalogenM))(mid)(Control_Monad_Eff_Class.liftEff(Control_Monad_Maybe_Trans.monadEffMaybe(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0())))(DOM_HTML_HTMLElement.getBoundingClientRect(v)));
+                            throw new Error("Failed pattern match at Halogen.Zuruzuru line 241, column 69 - line 245, column 5: " + [ dir.constructor.name ]);
+                        })());
+                        var notify = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(function ($215) {
+                            return Data_Functor.map(Data_Functor.functorArray)(Control_Comonad.extract(Data_Tuple.comonadTuple))(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))($215));
+                        }))(function ($216) {
+                            return Halogen_Query_HalogenM.raise(Data_Either.Left.create(NewState.create($216)));
                         });
-                    };
-                    var getPoses = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))))(Data_Traversable.traverse(Data_Traversable.traversableArray)(Halogen_Query_HalogenM.applicativeHalogenM)(function (v) {
-                        return Control_Monad_Maybe_Trans.runMaybeT(getPos(v.value0));
-                    }));
-                    var fresh$prime = fresh(Halogen_Query_HalogenM.monadStateHalogenM)(function (dictStrong) {
-                        return Data_Lens_Record.prop(new Data_Symbol.IsSymbol(function () {
-                            return "supply";
-                        }))()()(Data_Symbol.SProxy.value)(dictStrong);
-                    });
-                    var $$eval = function (v) {
-                        if (v instanceof Output) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Halogen_Query_HalogenM.raise(new Data_Either.Right(v.value0)));
-                        };
-                        if (v instanceof Reset) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("Reset")))(function () {
-                                return Control_Monad_State_Class.put(Halogen_Query_HalogenM.monadStateHalogenM)(initialState(v.value0));
-                            }));
-                        };
-                        if (v instanceof Update) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value2)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_values(Data_Profunctor_Strong.strongFn))(Data_Functor.map(Data_Functor.functorArray)(Control_Extend.extend(Data_Tuple.extendTuple)(function (v2) {
-                                var $67 = v.value0 === v2.value0;
-                                if ($67) {
-                                    return v.value1;
+                        var mid = (function () {
+                            if (dir instanceof Vertical) {
+                                return function ($217) {
+                                    return (function (v) {
+                                        return v / 2.0;
+                                    })(Control_Apply.lift2(Control_Apply.applyFn)(Data_Semiring.add(Data_Semiring.semiringNumber))(function (v) {
+                                        return v.top;
+                                    })(function (v) {
+                                        return v.bottom;
+                                    })($217));
                                 };
-                                return v2.value1;
-                            }))))(function () {
-                                return notify;
-                            }));
+                            };
+                            if (dir instanceof Horizontal) {
+                                return function ($218) {
+                                    return (function (v) {
+                                        return v / 2.0;
+                                    })(Control_Apply.lift2(Control_Apply.applyFn)(Data_Semiring.add(Data_Semiring.semiringNumber))(function (v) {
+                                        return v.left;
+                                    })(function (v) {
+                                        return v.right;
+                                    })($218));
+                                };
+                            };
+                            throw new Error("Failed pattern match at Halogen.Zuruzuru line 271, column 11 - line 273, column 61: " + [ dir.constructor.name ]);
+                        })();
+                        var label = function (i) {
+                            return "zuruzuru-component" + i;
                         };
-                        if (v instanceof Add) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Data_Functor.map(Halogen_Query_HalogenM.functorHalogenM)(function ($163) {
-                                return "item" + Data_Show.show(Data_Show.showInt)($163);
-                            })(fresh$prime))(function (v1) {
-                                return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_values(Data_Profunctor_Strong.strongFn))(Control_Apply.apply(Control_Apply.applyFn)(Data_Maybe.fromMaybe)(Data_Array.insertAt(v.value0)(new Data_Tuple.Tuple(v1, $$default)))))(function () {
+                        var itemStyle = (function () {
+                            var display = (function () {
+                                if (dir instanceof Horizontal) {
+                                    return "; display: inline-block";
+                                };
+                                if (dir instanceof Vertical) {
+                                    return "; display: block";
+                                };
+                                throw new Error("Failed pattern match at Halogen.Zuruzuru line 236, column 17 - line 240, column 5: " + [ dir.constructor.name ]);
+                            })();
+                            return function ($219) {
+                                return Halogen_HTML_Properties.attr("style")((function (v) {
+                                    return v + display;
+                                })($219));
+                            };
+                        })();
+                        var item = function (k) {
+                            return function (styl) {
+                                return function (props) {
+                                    return function (children) {
+                                        return [ new Data_Tuple.Tuple(k, Halogen_HTML_Elements.div(Data_Semigroup.append(Data_Semigroup.semigroupArray)([ itemStyle(styl) ])(props))(children)) ];
+                                    };
+                                };
+                            };
+                        };
+                        
+                        // getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) (Output o e) m) Number
+var getPos = function (k) {
+                            return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Halogen_Query_HalogenM.getRef(label(k))))(function (v) {
+                                return Data_Functor.map(Control_Monad_Maybe_Trans.functorMaybeT(Halogen_Query_HalogenM.functorHalogenM))(mid)(Control_Monad_Eff_Class.liftEff(Control_Monad_Maybe_Trans.monadEffMaybe(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0())))(DOM_HTML_HTMLElement.getBoundingClientRect(v)));
+                            });
+                        };
+                        
+                        // getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
+var getPoses = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))))(Data_Traversable.traverse(Data_Traversable.traversableArray)(Halogen_Query_HalogenM.applicativeHalogenM)(function (v) {
+                            return Control_Monad_Maybe_Trans.runMaybeT(getPos(v.value0));
+                        }));
+                        var fresh$prime = fresh(Halogen_Query_HalogenM.monadStateHalogenM)(function (dictStrong) {
+                            return Data_Lens_Record.prop(new Data_Symbol.IsSymbol(function () {
+                                return "supply";
+                            }))()()(Data_Symbol.SProxy.value)(dictStrong);
+                        });
+                        var $$eval = function (v) {
+                            if (v instanceof Output) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Halogen_Query_HalogenM.raise(new Data_Either.Right(v.value0)));
+                            };
+                            if (v instanceof Reset) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("Reset")))(function () {
+                                    return Control_Monad_State_Class.put(Halogen_Query_HalogenM.monadStateHalogenM)(initialState(v.value0));
+                                }));
+                            };
+                            if (v instanceof Update) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value2)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_values(Data_Profunctor_Strong.strongFn))(Data_Functor.map(Data_Functor.functorArray)(Control_Extend.extend(Data_Tuple.extendTuple)(function (v1) {
+                                    var $81 = v.value0 === v1.value0;
+                                    if ($81) {
+                                        return v.value1(v1.value1);
+                                    };
+                                    return v1.value1;
+                                }))))(function () {
                                     return notify;
-                                });
-                            }));
-                        };
-                        if (v instanceof Remove) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_values(Data_Profunctor_Strong.strongFn))(Data_Array.filter(function ($164) {
-                                return v.value0 !== Data_Tuple.fst($164);
-                            })))(function () {
-                                return notify;
-                            }));
-                        };
-                        if (v instanceof Swap) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value2)(Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget)))))(function (v1) {
-                                return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.index(v1)(v.value0))))(function (v2) {
-                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.index(v1)(v.value1))))(function (v3) {
-                                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.updateAt(v.value0)(v3)(v1))))(function (v4) {
-                                            return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.updateAt(v.value1)(v2)(v4))))(function (v5) {
-                                                return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Data_Lens_Setter.assign(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(_values(Data_Profunctor_Strong.strongFn))(v5))(function () {
-                                                    return Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(notify);
-                                                });
-                                            });
-                                        });
+                                }));
+                            };
+                            if (v instanceof Add) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Data_Functor.map(Halogen_Query_HalogenM.functorHalogenM)(function ($220) {
+                                    return "item" + Data_Show.show(Data_Show.showInt)($220);
+                                })(fresh$prime))(function (v1) {
+                                    return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_values(Data_Profunctor_Strong.strongFn))(Control_Apply.apply(Control_Apply.applyFn)(Data_Maybe.fromMaybe)(Data_Array.insertAt(v.value0)(new Data_Tuple.Tuple(v1, $$default)))))(function () {
+                                        return notify;
                                     });
-                                });
-                            })));
-                        };
-                        if (v instanceof DragTo) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Getter.view(_dragging(Data_Lens_Internal_Forget.strongForget)))))(function (v1) {
-                                return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(getPos(v1.key))(function (v2) {
-                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_State_Class.gets(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))))(function (v3) {
-                                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Control_Bind.bind(Data_Maybe.bindMaybe)(Data_Array.findIndex(function ($165) {
-                                            return v1.key === Data_Tuple.fst($165);
-                                        })(v3))(function (v4) {
-                                            return Control_Bind.bind(Data_Maybe.bindMaybe)(Data_Array.index(v3)(v4))(function (v5) {
-                                                return Control_Bind.bind(Data_Maybe.bindMaybe)(Data_Array.deleteAt(v4)(v3))(Data_Array.insertAt(v.value0)(v5));
-                                            });
-                                        }))))(function (v4) {
-                                            return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_State_Class.modify(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(function (v5) {
-                                                var $92 = {};
-                                                for (var $93 in v5) {
-                                                    if ({}.hasOwnProperty.call(v5, $93)) {
-                                                        $92[$93] = v5[$93];
-                                                    };
-                                                };
-                                                $92.values = v4;
-                                                return $92;
-                                            }))(function () {
-                                                return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(getPos(v1.key))(function (v5) {
-                                                    return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Eff_Class.liftEff(Control_Monad_Maybe_Trans.monadEffMaybe(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0())))(Control_Monad_Eff_Console.log("dragTo offset: " + Data_Show.show(Data_Show.showNumber)(v5 - v2))))(function () {
-                                                        return Data_Lens_Setter.addModifying(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(Data_Semiring.semiringNumber)(_offset(Data_Lens_Internal_Wander.wanderFunction))(v5 - v2);
+                                }));
+                            };
+                            if (v instanceof Remove) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_values(Data_Profunctor_Strong.strongFn))(Data_Array.filter(function ($221) {
+                                    return v.value0 !== Data_Tuple.fst($221);
+                                })))(function () {
+                                    return notify;
+                                }));
+                            };
+                            if (v instanceof Swap) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value2)(Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget)))))(function (v1) {
+                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.index(v1)(v.value0))))(function (v2) {
+                                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.index(v1)(v.value1))))(function (v3) {
+                                            return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.updateAt(v.value0)(v3)(v1))))(function (v4) {
+                                                return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.updateAt(v.value1)(v2)(v4))))(function (v5) {
+                                                    return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Data_Lens_Setter.assign(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(_values(Data_Profunctor_Strong.strongFn))(v5))(function () {
+                                                        return Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(notify);
                                                     });
                                                 });
                                             });
                                         });
                                     });
-                                });
-                            })));
-                        };
-                        if (v instanceof Dragging) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value2)(Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(Halogen_Query_HalogenM.subscribe(Halogen_Component_Utils_Drag.dragEventSource(dictMonadAff)(v.value1)(function (e$prime) {
-                                return Data_Maybe.Just.create(new Move(e$prime, Halogen_Query_EventSource.Listening.value));
-                            }))))(function () {
-                                return Data_Lens_Setter.assignJust(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(_dragging(Data_Profunctor_Strong.strongFn))({
-                                    key: v.value0,
-                                    displacement: 0.0,
-                                    offset: 0.0
-                                });
-                            })));
-                        };
-                        if (v instanceof Move && v.value0 instanceof Halogen_Component_Utils_Drag.Move) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)((function () {
-                                var mouseMovement = (function () {
-                                    if (dir instanceof Horizontal) {
-                                        return v.value0.value1.offsetX;
-                                    };
-                                    if (dir instanceof Vertical) {
-                                        return v.value0.value1.offsetY;
-                                    };
-                                    throw new Error("Failed pattern match at Halogen.Zuruzuru line 306, column 25 - line 308, column 32: " + [ dir.constructor.name ]);
-                                })();
-                                return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.logShow(Data_Show.showNumber)(mouseMovement)))(function () {
-                                    return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_dragging(Data_Profunctor_Strong.strongFn))(Data_Functor.map(Data_Maybe.functorMaybe)(function (v1) {
-                                        var $102 = {};
-                                        for (var $103 in v1) {
-                                            if ({}.hasOwnProperty.call(v1, $103)) {
-                                                $102[$103] = v1[$103];
-                                            };
-                                        };
-                                        $102.displacement = mouseMovement;
-                                        return $102;
-                                    })))(function () {
-                                        return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(getPoses)(function (v1) {
-                                            return Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Fold.preview(_dragKey(Data_Lens_Internal_Forget.wanderForget(Data_Maybe_First.monoidFirst))))))(function (v2) {
-                                                return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_State_Class.gets(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))))(function (v3) {
-                                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.findIndex(function ($166) {
-                                                        return v2 === Data_Tuple.fst($166);
-                                                    })(v3))))(function (v4) {
-                                                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(getPos(v2))(function (v5) {
-                                                            var most = Data_Maybe.fromMaybe(v4)(Data_Array.findLastIndex(Data_Maybe.maybe(false)(function (v6) {
-                                                                return v6 <= v5;
-                                                            }))(v1));
-                                                            
-                                                            // these will either default to `i` (already) or
-                                                            // be the index that this should go to
-var least = Data_Maybe.fromMaybe(v4)(Data_Array.findIndex(Data_Maybe.maybe(false)(function (v6) {
-                                                                return v6 >= v5;
-                                                            }))(v1));
-                                                            return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_MonadZero.guard(Control_Monad_Maybe_Trans.monadZeroMaybeT(Halogen_Query_HalogenM.monadHalogenM))(least < most))(function () {
-                                                                var i$prime = (function () {
-                                                                    if (most > v4 && least === v4) {
-                                                                        return most;
-                                                                    };
-                                                                    if (least < v4 && most === v4) {
-                                                                        return least;
-                                                                    };
-                                                                    if (Data_Boolean.otherwise) {
-                                                                        return v4;
-                                                                    };
-                                                                    throw new Error("Failed pattern match at Halogen.Zuruzuru line 324, column 11 - line 327, column 28: " + [  ]);
-                                                                })();
-                                                                return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_MonadZero.guard(Control_Monad_Maybe_Trans.monadZeroMaybeT(Halogen_Query_HalogenM.monadHalogenM))(v4 !== i$prime))(function () {
-                                                                    return Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)($$eval(new DragTo(i$prime, Data_Unit.unit)));
-                                                                });
+                                })));
+                            };
+                            if (v instanceof DragTo) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Getter.view(_dragging(Data_Lens_Internal_Forget.strongForget)))))(function (v1) {
+                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(getPos(v1.key))(function (v2) {
+                                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_State_Class.gets(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))))(function (v3) {
+                                            return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Control_Bind.bind(Data_Maybe.bindMaybe)(Data_Array.findIndex(function ($222) {
+                                                return v1.key === Data_Tuple.fst($222);
+                                            })(v3))(function (v4) {
+                                                return Control_Bind.bind(Data_Maybe.bindMaybe)(Data_Array.index(v3)(v4))(function (v5) {
+                                                    return Control_Bind.bind(Data_Maybe.bindMaybe)(Data_Array.deleteAt(v4)(v3))(Data_Array.insertAt(v.value0)(v5));
+                                                });
+                                            }))))(function (v4) {
+                                                return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_State_Class.modify(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(function (v5) {
+                                                    var $106 = {};
+                                                    for (var $107 in v5) {
+                                                        if ({}.hasOwnProperty.call(v5, $107)) {
+                                                            $106[$107] = v5[$107];
+                                                        };
+                                                    };
+                                                    $106.values = v4;
+                                                    return $106;
+                                                }))(function () {
+                                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(getPos(v1.key))(function (v5) {
+                                                        return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Eff_Class.liftEff(Control_Monad_Maybe_Trans.monadEffMaybe(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0())))(Control_Monad_Eff_Console.log("dragTo offset: " + Data_Show.show(Data_Show.showNumber)(v5 - v2))))(function () {
+                                                            return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Data_Lens_Setter.addModifying(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(Data_Semiring.semiringNumber)(_offset(Data_Lens_Internal_Wander.wanderFunction))(v5 - v2))(function () {
+                                                                return Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(Halogen_Query_HalogenM.raise(Data_Either.Left.create(new Preview(Data_Functor.map(Data_Functor.functorArray)(Control_Comonad.extract(Data_Tuple.comonadTuple))(v4)))));
                                                             });
                                                         });
                                                     });
                                                 });
-                                            }));
+                                            });
                                         });
                                     });
-                                });
-                            })());
-                        };
-                        if (v instanceof Move && v.value0 instanceof Halogen_Component_Utils_Drag.Done) {
-                            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("End")))(function () {
-                                return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.assign(Halogen_Query_HalogenM.monadStateHalogenM)(_dragging(Data_Profunctor_Strong.strongFn))(Data_Maybe.Nothing.value))(function () {
-                                    return notify;
-                                });
-                            }));
-                        };
-                        throw new Error("Failed pattern match at Halogen.Zuruzuru line 264, column 5 - line 264, column 77: " + [ v.constructor.name ]);
-                    };
-                    var dragStyle = function (dragging) {
-                        return function (key) {
-                            if (dragging instanceof Data_Maybe.Just && dragging.value0.key === key) {
-                                var axis = (function () {
-                                    if (dir instanceof Horizontal) {
-                                        return "X";
-                                    };
-                                    if (dir instanceof Vertical) {
-                                        return "Y";
-                                    };
-                                    throw new Error("Failed pattern match at Halogen.Zuruzuru line 226, column 18 - line 229, column 9: " + [ dir.constructor.name ]);
-                                })();
-                                return "transform: translate" + (axis + ("(" + (Data_Show.show(Data_Show.showNumber)(dragging.value0.displacement - dragging.value0.offset) + "px)")));
+                                })));
                             };
-                            return "";
+                            if (v instanceof Dragging) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value2)(Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(Halogen_Query_HalogenM.subscribe(Halogen_Component_Utils_Drag.dragEventSource(dictMonadAff)(v.value1)(function (e$prime) {
+                                    return Data_Maybe.Just.create(new Move(e$prime, Halogen_Query_EventSource.Listening.value));
+                                }))))(function () {
+                                    return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Data_Lens_Setter.assignJust(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(_dragging(Data_Profunctor_Strong.strongFn))({
+                                        key: v.value0,
+                                        displacement: 0.0,
+                                        offset: 0.0
+                                    }))(function () {
+                                        return Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)(Halogen_Query_HalogenM.raise(Data_Either.Left.create(DragStart.value)));
+                                    });
+                                })));
+                            };
+                            if (v instanceof Move && v.value0 instanceof Halogen_Component_Utils_Drag.Move) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)((function () {
+                                    var mouseMovement = (function () {
+                                        if (dir instanceof Horizontal) {
+                                            return v.value0.value1.offsetX;
+                                        };
+                                        if (dir instanceof Vertical) {
+                                            return v.value0.value1.offsetY;
+                                        };
+                                        throw new Error("Failed pattern match at Halogen.Zuruzuru line 334, column 25 - line 336, column 32: " + [ dir.constructor.name ]);
+                                    })();
+                                    return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.logShow(Data_Show.showNumber)(mouseMovement)))(function () {
+                                        return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.modifying(Halogen_Query_HalogenM.monadStateHalogenM)(_dragging(Data_Profunctor_Strong.strongFn))(Data_Functor.map(Data_Maybe.functorMaybe)(function (v1) {
+                                            var $116 = {};
+                                            for (var $117 in v1) {
+                                                if ({}.hasOwnProperty.call(v1, $117)) {
+                                                    $116[$117] = v1[$117];
+                                                };
+                                            };
+                                            $116.displacement = mouseMovement;
+                                            return $116;
+                                        })))(function () {
+                                            return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(getPoses)(function (v1) {
+                                                return Control_Monad_Maybe_Trans.runMaybeT(Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Monad_State_Class.gets(Halogen_Query_HalogenM.monadStateHalogenM)(Data_Lens_Fold.preview(_dragKey(Data_Lens_Internal_Forget.wanderForget(Data_Maybe_First.monoidFirst))))))(function (v2) {
+                                                    return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_State_Class.gets(Control_Monad_Maybe_Trans.monadStateMaybeT(Halogen_Query_HalogenM.monadStateHalogenM))(Data_Lens_Getter.view(_values(Data_Lens_Internal_Forget.strongForget))))(function (v3) {
+                                                        return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_Monad_Maybe_Trans.MaybeT(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Array.findIndex(function ($223) {
+                                                            return v2 === Data_Tuple.fst($223);
+                                                        })(v3))))(function (v4) {
+                                                            return Control_Bind.bind(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(getPos(v2))(function (v5) {
+                                                                var most = Data_Maybe.fromMaybe(v4)(Data_Array.findLastIndex(Data_Maybe.maybe(false)(function (v6) {
+                                                                    return v6 <= v5;
+                                                                }))(v1));
+                                                                
+                                                                // these will either default to `i` (already) or
+                                                                // be the index that this should go to
+var least = Data_Maybe.fromMaybe(v4)(Data_Array.findIndex(Data_Maybe.maybe(false)(function (v6) {
+                                                                    return v6 >= v5;
+                                                                }))(v1));
+                                                                return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_MonadZero.guard(Control_Monad_Maybe_Trans.monadZeroMaybeT(Halogen_Query_HalogenM.monadHalogenM))(least < most))(function () {
+                                                                    var i$prime = (function () {
+                                                                        if (most > v4 && least === v4) {
+                                                                            return most;
+                                                                        };
+                                                                        if (least < v4 && most === v4) {
+                                                                            return least;
+                                                                        };
+                                                                        if (Data_Boolean.otherwise) {
+                                                                            return v4;
+                                                                        };
+                                                                        throw new Error("Failed pattern match at Halogen.Zuruzuru line 352, column 11 - line 355, column 28: " + [  ]);
+                                                                    })();
+                                                                    return Control_Bind.discard(Control_Bind.discardUnit)(Control_Monad_Maybe_Trans.bindMaybeT(Halogen_Query_HalogenM.monadHalogenM))(Control_MonadZero.guard(Control_Monad_Maybe_Trans.monadZeroMaybeT(Halogen_Query_HalogenM.monadHalogenM))(v4 !== i$prime))(function () {
+                                                                        return Control_Monad_Trans_Class.lift(Control_Monad_Maybe_Trans.monadTransMaybeT)(Halogen_Query_HalogenM.monadHalogenM)($$eval(new DragTo(i$prime, Data_Unit.unit)));
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                }));
+                                            });
+                                        });
+                                    });
+                                })());
+                            };
+                            if (v instanceof Move && v.value0 instanceof Halogen_Component_Utils_Drag.Done) {
+                                return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("End")))(function () {
+                                    return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Data_Lens_Setter.assign(Halogen_Query_HalogenM.monadStateHalogenM)(_dragging(Data_Profunctor_Strong.strongFn))(Data_Maybe.Nothing.value))(function () {
+                                        return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Halogen_Query_HalogenM.raise(Data_Either.Left.create(DragEnd.value)))(function () {
+                                            return notify;
+                                        });
+                                    });
+                                }));
+                            };
+                            throw new Error("Failed pattern match at Halogen.Zuruzuru line 290, column 5 - line 290, column 78: " + [ v.constructor.name ]);
                         };
-                    };
-                    var adding = function (i) {
-                        return Control_Bind.join(Control_Bind.bindArray)(Data_Array.fromFoldable(Data_Foldable.foldableMaybe)(Data_Functor.mapFlipped(Data_Maybe.functorMaybe)(addBtn(new Add(i, Data_Unit.unit)))(function (b) {
-                            return item("add" + Data_Show.show(Data_Show.showInt)(i))("")([  ])([ b ]);
-                        })));
-                    };
-                    var render = function (v) {
-                        return Halogen_HTML_Elements_Keyed.div([ topStyle ])((function () {
-                            var top = Data_Array.length(v.values) - 1 | 0;
-                            return surroundMapWithIndices(Data_Monoid.monoidArray)(adding)(function (i) {
-                                return function (v1) {
-                                    return item(v1.value0)(dragStyle(v.dragging)(v1.value0))([ Halogen_HTML_Properties.ref(label(v1.value0)) ])(Control_Applicative.pure(Control_Applicative.applicativeArray)(render1({
-                                        prev: Data_Functor.voidLeft(Data_Maybe.functorMaybe)(Control_MonadZero.guard(Data_Maybe.monadZeroMaybe)(i > 0))(new Swap(i, i - 1 | 0, Data_Unit.unit)),
-                                        next: Data_Functor.voidLeft(Data_Maybe.functorMaybe)(Control_MonadZero.guard(Data_Maybe.monadZeroMaybe)(i < top))(new Swap(i, i + 1 | 0, Data_Unit.unit)),
-                                        remove: new Remove(v1.value0, Data_Unit.unit),
-                                        set: Data_Functor.flap(Data_Functor.functorFn)(Update.create(v1.value0))(Data_Unit.unit),
-                                        output: Data_Functor.flap(Data_Functor.functorFn)(Output.create)(Data_Unit.unit)
-                                    })(Halogen_HTML_Events.onMouseDown(Halogen_HTML_Events.input(Dragging.create(v1.value0))))({
-                                        key: v1.value0,
-                                        index: i,
-                                        value: v1.value1
-                                    })));
+                        var dragStyle = function (dragging) {
+                            return function (key) {
+                                if (dragging instanceof Data_Maybe.Just && dragging.value0.key === key) {
+                                    var axis = (function () {
+                                        if (dir instanceof Horizontal) {
+                                            return "X";
+                                        };
+                                        if (dir instanceof Vertical) {
+                                            return "Y";
+                                        };
+                                        throw new Error("Failed pattern match at Halogen.Zuruzuru line 251, column 18 - line 254, column 9: " + [ dir.constructor.name ]);
+                                    })();
+                                    return "transform: translate" + (axis + ("(" + (Data_Show.show(Data_Show.showNumber)(dragging.value0.displacement - dragging.value0.offset) + "px)")));
                                 };
-                            });
-                        })()(v.values));
+                                return "";
+                            };
+                        };
+                        var adding = function (i) {
+                            return Control_Bind.join(Control_Bind.bindArray)(Data_Array.fromFoldable(Data_Foldable.foldableMaybe)(Data_Functor.mapFlipped(Data_Maybe.functorMaybe)(addBtn(new Add(i, Data_Unit.unit)))(function (b) {
+                                return item("add" + Data_Show.show(Data_Show.showInt)(i))("")([  ])([ b ]);
+                            })));
+                        };
+                        var render = function (v) {
+                            return Halogen_HTML_Elements_Keyed.div([ topStyle ])((function () {
+                                var top = Data_Array.length(v.values) - 1 | 0;
+                                return surroundMapWithIndices(Data_Monoid.monoidArray)(adding)(function (i) {
+                                    return function (v1) {
+                                        return item(v1.value0)(dragStyle(v.dragging)(v1.value0))([ Halogen_HTML_Properties.ref(label(v1.value0)) ])(Control_Applicative.pure(Control_Applicative.applicativeArray)(render1({
+                                            prev: Data_Functor.voidLeft(Data_Maybe.functorMaybe)(Control_MonadZero.guard(Data_Maybe.monadZeroMaybe)(i > 0))(new Swap(i, i - 1 | 0, Data_Unit.unit)),
+                                            next: Data_Functor.voidLeft(Data_Maybe.functorMaybe)(Control_MonadZero.guard(Data_Maybe.monadZeroMaybe)(i < top))(new Swap(i, i + 1 | 0, Data_Unit.unit)),
+                                            remove: new Remove(v1.value0, Data_Unit.unit),
+                                            set: function (e) {
+                                                return new Update(v1.value0, Data_Function["const"](e), Data_Unit.unit);
+                                            },
+                                            modify: Data_Functor.flap(Data_Functor.functorFn)(Update.create(v1.value0))(Data_Unit.unit),
+                                            output: Data_Functor.flap(Data_Functor.functorFn)(Output.create)(Data_Unit.unit)
+                                        })(Halogen_HTML_Events.onMouseDown(Halogen_HTML_Events.input(Dragging.create(v1.value0))))({
+                                            key: v1.value0,
+                                            index: i,
+                                            value: v1.value1
+                                        })));
+                                    };
+                                });
+                            })()(v.values));
+                        };
+                        return Halogen_Component.lifecycleParentComponent(dictOrd)({
+                            initialState: initialState,
+                            render: render,
+                            "eval": $$eval,
+                            receiver: Halogen_HTML_Events.input(Reset.create),
+                            initializer: Data_Maybe.Nothing.value,
+                            finalizer: Data_Maybe.Nothing.value
+                        });
                     };
-                    return Halogen_Component.lifecycleComponent(Halogen_HTML_Core.bifunctorHTML)({
-                        initialState: initialState,
-                        render: render,
-                        "eval": $$eval,
-                        receiver: Halogen_HTML_Events.input(Reset.create),
-                        initializer: Data_Maybe.Nothing.value,
-                        finalizer: Data_Maybe.Nothing.value
-                    });
                 };
             };
         };
     };
+};
+
+// | `zuruzuru` minus the higher-order parent component junk.
+var zuru = function (dictMonadAff) {
+    return zuruzuru(Data_Ord.ordVoid)(dictMonadAff);
 };
 var demo = function (dictMonadAff) {
     var lifting = function (v) {
@@ -43027,20 +43077,23 @@ var demo = function (dictMonadAff) {
         if (v instanceof Data_Either.Right) {
             return Data_Maybe.Nothing.value;
         };
-        throw new Error("Failed pattern match at Halogen.Zuruzuru line 378, column 5 - line 378, column 45: " + [ v.constructor.name ]);
+        throw new Error("Failed pattern match at Halogen.Zuruzuru line 407, column 5 - line 407, column 45: " + [ v.constructor.name ]);
     };
     var inform = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
         return Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.logShow(Data_Show.showArray(Data_Show.showString))(v));
     });
-    var update = function ($167) {
+    var update = function ($224) {
         return (function (v) {
             return Control_Apply.applySecond(Halogen_Query_HalogenM.applyHalogenM)(v)(inform);
-        })(Control_Monad_State_Class.put(Halogen_Query_HalogenM.monadStateHalogenM)($167));
+        })(Control_Monad_State_Class.put(Halogen_Query_HalogenM.monadStateHalogenM)($224));
     };
     var $$eval = function (v) {
-        return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("Update")))(function () {
-            return update(v.value0.value0);
-        }));
+        if (v.value0 instanceof NewState) {
+            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("Update")))(function () {
+                return update(v.value0.value0);
+            }));
+        };
+        return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(v.value1);
     };
     var btn = function (q) {
         return function (t) {
@@ -43052,20 +43105,20 @@ var demo = function (dictMonadAff) {
             return Data_Maybe.Just.create(btn(new Data_Maybe.Just(q))(t));
         };
     };
-    var com1 = zuruzuru(dictMonadAff)(Vertical.value)(Data_Monoid.mempty(Data_Monoid.monoidString))(add("Add"))(function (v) {
+    var com1 = zuru(dictMonadAff)(Vertical.value)(Data_Monoid.mempty(Data_Monoid.monoidString))(add("Add"))(function (v) {
         return function (handle) {
             return function (v1) {
-                return Halogen_HTML_Elements.div_([ btn(v.prev)("\u25b2"), Halogen_HTML_Elements.button([ handle, Halogen_HTML_Properties.attr("style")("pointer: move") ])([ Halogen_HTML_Core.text("\u2261") ]), btn(v.next)("\u25bc"), Halogen_HTML_Core.text(" " + (Data_Show.show(Data_Show.showInt)(v1.index + 1 | 0) + ". ")), Halogen_HTML_Elements.input([ Halogen_HTML_Properties.value(v1.value), Halogen_HTML_Events.onValueInput(function ($168) {
-                    return Data_Maybe.Just.create(v.set($168));
+                return Halogen_HTML_Elements.div_([ btn(v.prev)("\u25b2"), Halogen_HTML_Elements.button([ handle, Halogen_HTML_Properties.attr("style")("pointer: move") ])([ Halogen_HTML_Core.text("\u2261") ]), btn(v.next)("\u25bc"), Halogen_HTML_Core.text(" " + (Data_Show.show(Data_Show.showInt)(v1.index + 1 | 0) + ". ")), Halogen_HTML_Elements.input([ Halogen_HTML_Properties.value(v1.value), Halogen_HTML_Events.onValueInput(function ($225) {
+                    return Data_Maybe.Just.create(v.set($225));
                 }) ]), btn(new Data_Maybe.Just(v.remove))("-") ]);
             };
         };
     });
-    var com2 = zuruzuru(dictMonadAff)(Horizontal.value)(Data_Monoid.mempty(Data_Monoid.monoidString))(add("+"))(function (v) {
+    var com2 = zuru(dictMonadAff)(Horizontal.value)(Data_Monoid.mempty(Data_Monoid.monoidString))(add("+"))(function (v) {
         return function (handle) {
             return function (v1) {
-                return Halogen_HTML_Elements.div_([ Halogen_HTML_Elements.button([ handle, Halogen_HTML_Properties.attr("style")("pointer: move") ])([ Halogen_HTML_Core.text("\u2261") ]), Halogen_HTML_Elements.input([ Halogen_HTML_Properties.value(v1.value), Halogen_HTML_Events.onValueInput(function ($169) {
-                    return Data_Maybe.Just.create(v.set($169));
+                return Halogen_HTML_Elements.div_([ Halogen_HTML_Elements.button([ handle, Halogen_HTML_Properties.attr("style")("pointer: move") ])([ Halogen_HTML_Core.text("\u2261") ]), Halogen_HTML_Elements.input([ Halogen_HTML_Properties.value(v1.value), Halogen_HTML_Events.onValueInput(function ($226) {
+                    return Data_Maybe.Just.create(v.set($226));
                 }) ]), btn(new Data_Maybe.Just(v.remove))("-") ]);
             };
         };
@@ -43082,11 +43135,96 @@ var demo = function (dictMonadAff) {
         finalizer: Data_Maybe.Nothing.value
     });
 };
+var demo2 = function (dictMonadAff) {
+    var setr = function (b) {
+        return function (v) {
+            return new Data_Tuple.Tuple(v.value0, b);
+        };
+    };
+    var setl = function (a) {
+        return function (v) {
+            return new Data_Tuple.Tuple(a, v.value1);
+        };
+    };
+    var lifting = function (v) {
+        if (v instanceof Data_Either.Left) {
+            return new Data_Maybe.Just(new Data_Tuple.Tuple(v.value0, Data_Unit.unit));
+        };
+        if (v instanceof Data_Either.Right) {
+            return Data_Maybe.Nothing.value;
+        };
+        throw new Error("Failed pattern match at Halogen.Zuruzuru line 482, column 5 - line 482, column 43: " + [ v.constructor.name ]);
+    };
+    var liftThru = function (v) {
+        if (v instanceof Data_Either.Left && v.value0 instanceof NewState) {
+            return Data_Maybe.Just.create(setr(v.value0.value0));
+        };
+        return Data_Maybe.Nothing.value;
+    };
+    var inform = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
+        return Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.logShow(Data_Show.showArray(Data_Tuple.showTuple(Data_Show.showString)(Data_Show.showArray(Data_Show.showString))))(v));
+    });
+    var update = function ($227) {
+        return (function (v) {
+            return Control_Apply.applySecond(Halogen_Query_HalogenM.applyHalogenM)(v)(inform);
+        })(Control_Monad_State_Class.put(Halogen_Query_HalogenM.monadStateHalogenM)($227));
+    };
+    var $$eval = function (v) {
+        if (v.value0 instanceof NewState) {
+            return Data_Functor.voidRight(Halogen_Query_HalogenM.functorHalogenM)(v.value1)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_Eff_Class.liftEff(Halogen_Query_HalogenM.monadEffHalogenM(dictMonadAff.MonadEff0()))(Control_Monad_Eff_Console.log("Update")))(function () {
+                return update(v.value0.value0);
+            }));
+        };
+        return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(v.value1);
+    };
+    var btn = function (q) {
+        return function (t) {
+            return Halogen_HTML_Elements.button([ Halogen_HTML_Events.onClick(Control_Applicative.pure(Control_Applicative.applicativeFn)(q)), Halogen_HTML_Properties.disabled(Data_Maybe.isNothing(q)) ])([ Halogen_HTML_Core.text(t) ]);
+        };
+    };
+    var add = function (t) {
+        return function (q) {
+            return Data_Maybe.Just.create(btn(new Data_Maybe.Just(q))(t));
+        };
+    };
+    var inner = zuru(dictMonadAff)(Vertical.value)(Data_Monoid.mempty(Data_Monoid.monoidString))(add("+"))(function (v) {
+        return function (handle) {
+            return function (v1) {
+                return Halogen_HTML_Elements.div_([ btn(v.prev)("\u25b2"), Halogen_HTML_Elements.button([ handle, Halogen_HTML_Properties.attr("style")("pointer: move") ])([ Halogen_HTML_Core.text("\u2261") ]), btn(v.next)("\u25bc"), Halogen_HTML_Core.text(" " + (Data_Show.show(Data_Show.showInt)(v1.index + 1 | 0) + ". ")), Halogen_HTML_Elements.input([ Halogen_HTML_Properties.value(v1.value), Halogen_HTML_Events.onValueInput(function ($228) {
+                    return Data_Maybe.Just.create(v.set($228));
+                }) ]), btn(new Data_Maybe.Just(v.remove))("-") ]);
+            };
+        };
+    });
+    var outer = zuruzuru(Data_Ord.ordString)(dictMonadAff)(Horizontal.value)(Data_Monoid.mempty(Data_Tuple.monoidTuple(Data_Monoid.monoidString)(Data_Monoid.monoidArray)))(add("Add"))(function (v) {
+        return function (handle) {
+            return function (v1) {
+                return Halogen_HTML_Elements.div_([ btn(v.prev)("<"), Halogen_HTML_Elements.button([ handle, Halogen_HTML_Properties.attr("style")("pointer: move") ])([ Halogen_HTML_Core.text("\u2261") ]), btn(v.next)(">"), Halogen_HTML_Elements.br_, Halogen_HTML_Core.text(" " + (Data_Show.show(Data_Show.showInt)(v1.index + 1 | 0) + ". ")), Halogen_HTML_Elements.input([ Halogen_HTML_Properties.value(v1.value.value0), Halogen_HTML_Events.onValueInput(function (v3) {
+                    return new Data_Maybe.Just(v.modify(setl(v3)));
+                }) ]), Halogen_HTML_Elements.br_, Halogen_HTML.slot(v1.key)(inner)(v1.value.value1)(function ($229) {
+                    return Data_Functor.map(Data_Maybe.functorMaybe)(v.modify)(liftThru($229));
+                }), Halogen_HTML_Elements.br_, btn(new Data_Maybe.Just(v.remove))("-") ]);
+            };
+        };
+    });
+    var render = function (s) {
+        return Halogen_HTML_Elements.div_([ Halogen_HTML.slot(Data_Unit.unit)(outer)(s)(lifting) ]);
+    };
+    return Halogen_Component.lifecycleParentComponent(Data_Ord.ordUnit)({
+        initialState: Data_Function["const"]([ new Data_Tuple.Tuple("This", [ "a" ]), new Data_Tuple.Tuple("That", [ "b" ]), new Data_Tuple.Tuple("These", [ "a", "b" ]) ]),
+        render: render,
+        "eval": $$eval,
+        receiver: Data_Function["const"](Data_Maybe.Nothing.value),
+        initializer: Data_Maybe.Nothing.value,
+        finalizer: Data_Maybe.Nothing.value
+    });
+};
 
 // | Demo app.
-var main = Halogen_Aff_Util.runHalogenAff(Control_Bind.bind(Control_Monad_Aff.bindAff)(Halogen_Aff_Util.awaitBody)(Halogen_VDom_Driver.runUI(demo(Control_Monad_Aff_Class.monadAffAff))(Data_Unit.unit)));
+var main = Halogen_Aff_Util.runHalogenAff(Control_Bind.bind(Control_Monad_Aff.bindAff)(Halogen_Aff_Util.awaitBody)(Halogen_VDom_Driver.runUI(demo2(Control_Monad_Aff_Class.monadAffAff))(Data_Unit.unit)));
 module.exports = {
     zuruzuru: zuruzuru,
+    zuru: zuru,
     Vertical: Vertical,
     Horizontal: Horizontal,
     Reset: Reset,
@@ -43099,10 +43237,13 @@ module.exports = {
     DragTo: DragTo,
     Output: Output,
     NewState: NewState,
+    Preview: Preview,
+    DragStart: DragStart,
+    DragEnd: DragEnd,
     main: main
 };
 
-},{"../Control.Applicative":4,"../Control.Apply":6,"../Control.Bind":10,"../Control.Comonad":12,"../Control.Extend":15,"../Control.Monad.Aff":21,"../Control.Monad.Aff.Class":18,"../Control.Monad.Eff":36,"../Control.Monad.Eff.AVar":25,"../Control.Monad.Eff.Class":26,"../Control.Monad.Eff.Console":28,"../Control.Monad.Eff.Exception":30,"../Control.Monad.Eff.Ref":32,"../Control.Monad.Maybe.Trans":44,"../Control.Monad.State":53,"../Control.Monad.State.Class":51,"../Control.Monad.Trans.Class":54,"../Control.MonadZero":59,"../Control.Semigroupoid":63,"../DOM":113,"../DOM.Event.Types":72,"../DOM.HTML.HTMLElement":82,"../Data.Array":118,"../Data.Boolean":127,"../Data.Either":146,"../Data.Eq":149,"../Data.EuclideanRing":151,"../Data.Foldable":155,"../Data.FoldableWithIndex":156,"../Data.Function":163,"../Data.Functor":171,"../Data.FunctorWithIndex":173,"../Data.HeytingAlgebra":177,"../Data.Lens":213,"../Data.Lens.Fold":186,"../Data.Lens.Getter":187,"../Data.Lens.Internal.Forget":191,"../Data.Lens.Internal.Wander":198,"../Data.Lens.Prism.Maybe":207,"../Data.Lens.Record":209,"../Data.Lens.Setter":210,"../Data.Maybe":222,"../Data.Maybe.First":220,"../Data.Monoid":230,"../Data.Ord":239,"../Data.Profunctor.Strong":247,"../Data.Ring":253,"../Data.Semigroup":257,"../Data.Semiring":259,"../Data.Show":261,"../Data.Symbol":270,"../Data.Traversable":277,"../Data.Tuple":279,"../Data.Unit":283,"../Halogen":318,"../Halogen.Aff":292,"../Halogen.Aff.Util":291,"../Halogen.Component":295,"../Halogen.Component.Utils.Drag":294,"../Halogen.HTML":303,"../Halogen.HTML.Core":298,"../Halogen.HTML.Elements":300,"../Halogen.HTML.Elements.Keyed":299,"../Halogen.HTML.Events":301,"../Halogen.HTML.Properties":302,"../Halogen.Query.EventSource":304,"../Halogen.Query.HalogenM":306,"../Halogen.Query.InputF":307,"../Halogen.VDom.Driver":311,"../Prelude":325,"../Unsafe.Coerce":333}],318:[function(require,module,exports){
+},{"../Control.Applicative":4,"../Control.Apply":6,"../Control.Bind":10,"../Control.Comonad":12,"../Control.Extend":15,"../Control.Monad.Aff":21,"../Control.Monad.Aff.Class":18,"../Control.Monad.Eff":36,"../Control.Monad.Eff.AVar":25,"../Control.Monad.Eff.Class":26,"../Control.Monad.Eff.Console":28,"../Control.Monad.Eff.Exception":30,"../Control.Monad.Eff.Ref":32,"../Control.Monad.Maybe.Trans":44,"../Control.Monad.State":53,"../Control.Monad.State.Class":51,"../Control.Monad.Trans.Class":54,"../Control.MonadZero":59,"../Control.Semigroupoid":63,"../DOM":113,"../DOM.Event.Types":72,"../DOM.HTML.HTMLElement":82,"../Data.Array":118,"../Data.Boolean":127,"../Data.Const":136,"../Data.Either":146,"../Data.Eq":149,"../Data.EuclideanRing":151,"../Data.Foldable":155,"../Data.FoldableWithIndex":156,"../Data.Function":163,"../Data.Functor":171,"../Data.FunctorWithIndex":173,"../Data.HeytingAlgebra":177,"../Data.Lens":213,"../Data.Lens.Fold":186,"../Data.Lens.Getter":187,"../Data.Lens.Internal.Forget":191,"../Data.Lens.Internal.Wander":198,"../Data.Lens.Prism.Maybe":207,"../Data.Lens.Record":209,"../Data.Lens.Setter":210,"../Data.Maybe":222,"../Data.Maybe.First":220,"../Data.Monoid":230,"../Data.Ord":239,"../Data.Profunctor.Strong":247,"../Data.Ring":253,"../Data.Semigroup":257,"../Data.Semiring":259,"../Data.Show":261,"../Data.Symbol":270,"../Data.Traversable":277,"../Data.Tuple":279,"../Data.Unit":283,"../Halogen":318,"../Halogen.Aff":292,"../Halogen.Aff.Util":291,"../Halogen.Component":295,"../Halogen.Component.Utils.Drag":294,"../Halogen.HTML":303,"../Halogen.HTML.Core":298,"../Halogen.HTML.Elements":300,"../Halogen.HTML.Elements.Keyed":299,"../Halogen.HTML.Events":301,"../Halogen.HTML.Properties":302,"../Halogen.Query.EventSource":304,"../Halogen.Query.HalogenM":306,"../Halogen.Query.InputF":307,"../Halogen.VDom.Driver":311,"../Prelude":325,"../Unsafe.Coerce":333}],318:[function(require,module,exports){
 // Generated by purs version 0.11.7
 "use strict";
 var Control_Coroutine = require("../Control.Coroutine");
