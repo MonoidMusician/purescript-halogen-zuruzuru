@@ -462,11 +462,6 @@ demo2 =
     size = if _ then "big" else "small"
     whenDragged = if _ then " dragged" else ""
 
-    number :: forall a b. Boolean -> Int -> HH.HTML a b
-    number b i = HH.span
-      [ HP.class_ (H.ClassName $ "number " <> size b) ]
-      [ HH.text (" " <> show (i+1) <> ". ") ]
-
     btn :: forall q f p. String -> Maybe (q Unit) -> String -> H.ParentHTML q f p m
     btn c q t = (compose (HH.a [but c (isNothing q)] <<< pure) <<< HH.i)
       [ icon, HE.onClick (pure q) ] [ HH.text t ]
@@ -479,7 +474,6 @@ demo2 =
           [ btn "swap small" prev "keyboard_arrow_up"
           , HH.a [ handle, handle_ false ] [ HH.i [ icon ] [ HH.text "menu" ] ]
           , btn "swap small" next "keyboard_arrow_down"
-          , number false i
           , HH.input
             [ HP.class_ $ H.ClassName "type"
             , HP.placeholder "Type of argument"
@@ -496,7 +490,6 @@ demo2 =
           , HH.a [ handle, handle_ true ] [ HH.i [ icon ] [ HH.text "menu" ] ]
           , btn "swap big" next "arrow_forward"
           , HH.br_
-          , number true i
           , HH.input
             [ HP.class_ $ H.ClassName "constructor"
             , HP.placeholder "Constructor name"
