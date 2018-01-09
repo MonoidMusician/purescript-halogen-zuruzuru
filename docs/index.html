@@ -21,7 +21,7 @@
         color: lightgrey;
       }
 
-      a.btn:not(.disabled):hover {
+      a.btn:not(.disabled):hover, .handle:hover {
         color: rgb(232, 79, 189);
         opacity 0.5;
       }
@@ -31,7 +31,7 @@
       }
 
       /* Pressed buttons and dragged handles */
-      a.btn:not(.disabled):active, .dragged > .handle {
+      a.btn:not(.disabled):active, .dragged > .actions > .handle {
         color: rgb(232, 79, 189);
         opacity: 1.0;
       }
