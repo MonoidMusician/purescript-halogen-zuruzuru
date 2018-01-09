@@ -484,8 +484,8 @@ demo2 =
       \{ next, prev, remove, set } -> \handle ->
         \{ key: k, index: i, value: v, dragged } -> HH.div
           [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
-          [ btn ["swap", "small"] prev "arrow-up"
-          , HH.a [ handle, handle_ false ] [ icon "square" ]
+          [ HH.a [ handle, handle_ false ] [ icon "square" ]
+          , btn ["swap", "small"] prev "arrow-up"
           , btn ["swap", "small"] next "arrow-down"
           , HH.input
             [ HP.class_ $ H.ClassName "type"
@@ -500,8 +500,8 @@ demo2 =
       \{ next, prev, remove, modify } -> \handle ->
         \{ key: k, index: i, value: Tuple v cs, dragged } -> HH.div
           [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
-          [ btn ["swap","big"] prev "arrow-left"
-          , HH.a [ handle, handle_ true ] [ icon "square" ]
+          [ HH.a [ handle, handle_ true ] [ icon "square" ]
+          , btn ["swap","big"] prev "arrow-left"
           , btn ["swap","big"] next "arrow-right"
           , HH.br_
           , HH.input
