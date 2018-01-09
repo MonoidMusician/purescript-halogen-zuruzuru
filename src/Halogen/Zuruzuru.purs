@@ -119,6 +119,15 @@ type DragState =
   , displacement :: Number
   }
 
+type RenderFillerWhere =
+  { before :: Boolean
+  , between :: Boolean
+  , after :: Boolean
+  }
+
+justAfter = { before: false, between: false, after: true } :: RenderFillerWhere
+everywhere = { before: true, between: true, after: true } :: RenderFillerWhere
+
 fresh :: forall s m. MonadState s m => Lens' s Int -> m Int
 fresh lens = use lens <* H.modify (lens (_+1))
 
@@ -140,13 +149,22 @@ initialState vs = { values: addKeys vs, supply: length vs, dragging: Nothing }
 addKeys :: forall e. Array e -> Array (Keyed e)
 addKeys = mapWithIndex (Tuple <<< append "item" <<< show)
 
-surroundMapWithIndices :: forall m a. Monoid m =>
+surroundMapWithIndicesWhere :: forall m a. Monoid m =>
+  RenderFillerWhere ->
   (Int -> m) ->
   (Int -> a -> m) ->
   Array a -> m
-surroundMapWithIndices m f as = (_ <> m (length as)) $
-  as # foldMapWithIndex \i a ->
-    m i <> f i a
+surroundMapWithIndicesWhere { before, after, between } m f as =
+  let
+    notAfter =
+      as # foldMapWithIndex \i a ->
+        let addSpacer = if i == 0 then before else between
+        in if addSpacer
+          then m i <> f i a
+          else f i a
+  in if after
+    then notAfter <> m (length as)
+    else notAfter
 
 -- | The (opaque) queries to perform certain actions on an item.
 type Helpers o q e =
@@ -191,7 +209,9 @@ zuru :: forall m e o eff.
   Direction ->
   -- | Default value
   e ->
-  -- | Render a button for adding a component
+  -- | Where to render a button for adding a component
+  RenderFillerWhere ->
+  -- | How to render a button for adding a component
   (forall q. q Unit -> Maybe (SimpleHTML q m)) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
@@ -216,13 +236,15 @@ zuruzuru :: forall m e o eff g p.
   Direction ->
   -- | Default value
   e ->
-  -- | Render a button for adding a component
+  -- | Where to render a button for adding a component
+  RenderFillerWhere ->
+  -- | How to render a button for adding a component
   (forall q. q Unit -> Maybe (H.ParentHTML q g p m)) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
   (forall q. Helpers o q e -> Handle q -> Item e -> H.ParentHTML q g p m) ->
   H.Component HH.HTML (Query o e) (Array e) (Output o e) m
-zuruzuru dir default addBtn render1 =
+zuruzuru dir default ubi addBtn render1 =
   H.lifecycleParentComponent
     { initialState
     , render
@@ -269,7 +291,7 @@ zuruzuru dir default addBtn render1 =
     render { values, dragging } = HK.div [topClass] $ values #
       let top = length values - 1
           isDragged = isDragging dragging
-      in surroundMapWithIndices adding \i (Tuple k v) ->
+      in surroundMapWithIndicesWhere ubi adding \i (Tuple k v) ->
         let dragged = isDragged k in
         item k (dragStyle dragging k) [ HP.ref (label k) ]
           $ pure $ render1
@@ -397,7 +419,7 @@ demo =
     add :: forall q. String -> q Unit -> Maybe (SimpleHTML q m)
     add t q = Just $ btn (Just q) t
 
-    com1 = zuru Vertical mempty (add "Add") \{ next, prev, remove, set } -> \handle ->
+    com1 = zuru Vertical mempty justAfter (add "Add") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
         , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
@@ -408,7 +430,7 @@ demo =
         , btn (Just remove) "-"
         ]
 
-    com2 = zuru Horizontal mempty (add "+") \{ next, prev, remove, set } -> \handle ->
+    com2 = zuru Horizontal mempty justAfter (add "+") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
         , HH.input
@@ -445,9 +467,9 @@ demo2 :: forall u v m eff.
 demo2 =
   H.lifecycleParentComponent
     { initialState: const
-      [ Tuple "This" ["a",""]
-      , Tuple "That" ["b",""]
-      , Tuple "These" ["a", "b",""]
+      [ Tuple "This" ["a"]
+      , Tuple "That" ["b"]
+      , Tuple "These" ["a", "b"]
       ]
     , render
     , eval
@@ -480,7 +502,7 @@ demo2 =
     add :: forall q f p. Boolean -> q Unit -> Maybe (H.ParentHTML q f p m)
     add b q = Just $ btn (["add", size b]) (Just q) "plus"
 
-    inner = zuru Vertical mempty (const Nothing)
+    inner = zuru Vertical mempty justAfter (add false)
       \{ next, prev, remove, set } -> \handle ->
         \{ key: k, index: i, value: v, dragged } ->
           HH.div
@@ -500,7 +522,7 @@ demo2 =
               ]
             ]
 
-    outer = zuruzuru Horizontal mempty (const Nothing)
+    outer = zuruzuru Horizontal mempty justAfter (add true)
       \{ next, prev, remove, modify } -> \handle ->
         \{ key: k, index: i, value: Tuple v cs, dragged } ->
           HH.div
@@ -532,8 +554,7 @@ demo2 =
     addEmpty :: Array String -> Array String
     addEmpty = (_ <> [""]) <<< reverse <<< dropWhile (eq "") <<< reverse
 
-    -- | This might screw with the keying of the nodes, but not too badly ...
-    liftThru (Left (NewState cs)) = Just $ setr $ addEmpty cs
+    liftThru (Left (NewState cs)) = Just $ setr cs
     liftThru _ = Nothing
 
     lifting (Left m) = Just (Tuple m unit)
