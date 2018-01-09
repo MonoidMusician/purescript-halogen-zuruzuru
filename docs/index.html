@@ -13,16 +13,22 @@
       }
 
       a.btn, a.handle {
-        color: darkgray;
+        color: lightgrey;
+      }
+
+      a.btn:not(.disabled):hover {
+        color: rgb(232, 79, 189);
+        opacity 0.75;
       }
 
       a.btn.disabled {
-        color: gray;
+        opacity: 0.5;
       }
 
       /* Pressed buttons and dragged handles */
       a.btn:not(.disabled):active, .dragged > .handle {
         color: rgb(232, 79, 189);
+        opacity: 1.0;
       }
 
       .handle {
@@ -77,18 +83,6 @@
         margin-bottom: 20px;
         margin-right: 5px;
         vertical-align: top;
-      }
-
-      /* The components with content in the horizontal zuruzuru */
-      .constructor {
-      }
-
-      /* Each item in the vertical zuru */
-      .constructor > div > div {
-      }
-
-      /* The components with content in the vertical zuru */
-      .type {
       }
 
       /* Try to space the `+` over the middle of the handle */

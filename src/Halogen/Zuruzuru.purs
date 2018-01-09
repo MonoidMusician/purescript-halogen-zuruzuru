@@ -482,39 +482,41 @@ demo2 =
 
     inner = zuru Vertical mempty (const Nothing)
       \{ next, prev, remove, set } -> \handle ->
-        \{ key: k, index: i, value: v, dragged } -> HH.div
-          [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
-          [ HH.a [ handle, handle_ false ] [ icon "square" ]
-          , btn ["swap", "small"] prev "arrow-up"
-          , btn ["swap", "small"] next "arrow-down"
-          , HH.input
-            [ HP.class_ $ H.ClassName "type"
-            , HP.placeholder "Type of argument"
-            , HP.value v
-            , HE.onValueInput \v -> Just (set v)
+        \{ key: k, index: i, value: v, dragged } ->
+          HH.div
+            [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
+            [ HH.a [ handle, handle_ false ] [ HH.text "■" ]
+            , btn ["swap", "small"] prev "arrow-up"
+            , btn ["swap", "small"] next "arrow-down"
+            , HH.input
+              [ HP.class_ $ H.ClassName "type"
+              , HP.placeholder "Type of argument"
+              , HP.value v
+              , HE.onValueInput \v -> Just (set v)
+              ]
+            , btn ["remove", "small"] (Just remove) "remove"
             ]
-          , btn ["remove", "small"] (Just remove) "remove"
-          ]
 
-    outer = zuruzuru Horizontal mempty (add true)
+    outer = zuruzuru Horizontal mempty (const Nothing)
       \{ next, prev, remove, modify } -> \handle ->
-        \{ key: k, index: i, value: Tuple v cs, dragged } -> HH.div
-          [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
-          [ HH.a [ handle, handle_ true ] [ icon "square" ]
-          , btn ["swap","big"] prev "arrow-left"
-          , btn ["swap","big"] next "arrow-right"
-          , HH.br_
-          , HH.input
-            [ HP.class_ $ H.ClassName "constructor"
-            , HP.placeholder "Constructor name"
-            , HP.value v
-            , HE.onValueInput \v -> Just (modify (setl v))
+        \{ key: k, index: i, value: Tuple v cs, dragged } ->
+          HH.div
+            [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
+            [ HH.a [ handle, handle_ true ] [ HH.text "■" ]
+            , btn ["swap","big"] prev "arrow-left"
+            , btn ["swap","big"] next "arrow-right"
+            , HH.br_
+            , HH.input
+              [ HP.class_ $ H.ClassName "constructor"
+              , HP.placeholder "Constructor name"
+              , HP.value v
+              , HE.onValueInput \v -> Just (modify (setl v))
+              ]
+            , HH.br_
+            , HH.slot k inner cs (map modify <<< liftThru)
+            , HH.br_
+            , btn ["remove", "big"] (Just remove) "remove"
             ]
-          , HH.br_
-          , HH.slot k inner cs (map modify <<< liftThru)
-          , HH.br_
-          , btn ["remove", "big"] (Just remove) "remove"
-          ]
 
     update = H.put >>> (_ *> inform)
     inform = do
