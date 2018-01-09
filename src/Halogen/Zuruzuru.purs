@@ -14,6 +14,15 @@ module Halogen.Zuruzuru
   , Keyed
   , Key
   , SimpleHTML
+  , RenderAdderWhere
+  , RenderAdderPart
+  , SimpleRenderAdderPart
+  , mkRenderAdderPart
+  , runRenderAdderPart
+  , everywhere
+  , justAfter
+  , justBefore
+  , inside
   , main
   ) where
 
@@ -36,7 +45,7 @@ import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
 import DOM.Node.ParentNode (QuerySelector(..))
-import Data.Array (deleteAt, dropWhile, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, reverse, updateAt, (!!))
+import Data.Array (deleteAt, dropWhile, filter, findIndex, findLastIndex, foldMap, fromFoldable, insertAt, length, reverse, updateAt, (!!))
 import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldMapWithIndex)
@@ -119,14 +128,39 @@ type DragState =
   , displacement :: Number
   }
 
-type RenderFillerWhere =
-  { before :: Boolean
-  , between :: Boolean
-  , after :: Boolean
+type RenderAdderWhere a =
+  { before :: Maybe a
+  , between :: Maybe a
+  , after :: Maybe a
   }
 
-justAfter = { before: false, between: false, after: true } :: RenderFillerWhere
-everywhere = { before: true, between: true, after: true } :: RenderFillerWhere
+foreign import data RenderAdderPart :: (Type -> Type) -> Type -> (Type -> Type) -> Type
+type SimpleRenderAdderPart = RenderAdderPart (Const Void) Void
+
+mkRenderAdderPart :: forall g p m. (forall q. q Unit -> Maybe (H.ParentHTML q g p m)) -> RenderAdderPart g p m
+mkRenderAdderPart = unsafeCoerce
+
+runRenderAdderPart :: forall g p m. RenderAdderPart g p m -> (forall q. q Unit -> Maybe (H.ParentHTML q g p m))
+runRenderAdderPart = unsafeCoerce
+
+justAfter :: forall a. a -> RenderAdderWhere a
+justAfter a = { before: Nothing, between: Nothing, after: Just a }
+
+justBefore :: forall a. a -> RenderAdderWhere a
+justBefore a = { before: Just a, between: Nothing, after: Nothing }
+
+inside :: forall a. a -> RenderAdderWhere a
+inside a = { before: Nothing, between: Just a, after: Nothing }
+
+everywhere :: forall a. a -> RenderAdderWhere a
+everywhere a = { before: Just a, between: Just a, after: Just a }
+
+mapRenderAdderWhere :: forall a b. (a -> b) -> RenderAdderWhere a -> RenderAdderWhere b
+mapRenderAdderWhere f { before, between, after } =
+  { before: f <$> before
+  , between: f <$> between
+  , after: f <$> after
+  }
 
 fresh :: forall s m. MonadState s m => Lens' s Int -> m Int
 fresh lens = use lens <* H.modify (lens (_+1))
@@ -150,21 +184,16 @@ addKeys :: forall e. Array e -> Array (Keyed e)
 addKeys = mapWithIndex (Tuple <<< append "item" <<< show)
 
 surroundMapWithIndicesWhere :: forall m a. Monoid m =>
-  RenderFillerWhere ->
-  (Int -> m) ->
+  RenderAdderWhere (Int -> m) ->
   (Int -> a -> m) ->
   Array a -> m
-surroundMapWithIndicesWhere { before, after, between } m f as =
+surroundMapWithIndicesWhere { before, after, between } f as =
   let
     notAfter =
       as # foldMapWithIndex \i a ->
         let addSpacer = if i == 0 then before else between
-        in if addSpacer
-          then m i <> f i a
-          else f i a
-  in if after
-    then notAfter <> m (length as)
-    else notAfter
+        in foldMap (_ $ i) addSpacer <> f i a
+  in notAfter <> foldMap (_ $ length as) after
 
 -- | The (opaque) queries to perform certain actions on an item.
 type Helpers o q e =
@@ -209,10 +238,8 @@ zuru :: forall m e o eff.
   Direction ->
   -- | Default value
   e ->
-  -- | Where to render a button for adding a component
-  RenderFillerWhere ->
-  -- | How to render a button for adding a component
-  (forall q. q Unit -> Maybe (SimpleHTML q m)) ->
+  -- | How and where to render a button for adding a component
+  RenderAdderWhere (RenderAdderPart (Const Void) Void m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
   (forall q. Helpers o q e -> Handle q -> Item e -> SimpleHTML q m) ->
@@ -236,15 +263,14 @@ zuruzuru :: forall m e o eff g p.
   Direction ->
   -- | Default value
   e ->
-  -- | Where to render a button for adding a component
-  RenderFillerWhere ->
-  -- | How to render a button for adding a component
-  (forall q. q Unit -> Maybe (H.ParentHTML q g p m)) ->
+  -- | How and where to render a button for adding a component
+  -- Ugh. Impredicativity in records is the worst!
+  RenderAdderWhere (RenderAdderPart g p m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
   (forall q. Helpers o q e -> Handle q -> Item e -> H.ParentHTML q g p m) ->
   H.Component HH.HTML (Query o e) (Array e) (Output o e) m
-zuruzuru dir default ubi addBtn render1 =
+zuruzuru dir default addBtns render1 =
   H.lifecycleParentComponent
     { initialState
     , render
@@ -271,7 +297,8 @@ zuruzuru dir default ubi addBtn render1 =
 
     item k styl props children = [ Tuple k (HH.div ([itemClass, itemStyle styl] <> props) children) ]
 
-    adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
+    adding1 addBtn i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
+    adding = mapRenderAdderWhere (adding1 <<< runRenderAdderPart) addBtns
 
     isDragging dragging key = case dragging of
       Just { key: k } | k == key -> true
@@ -291,7 +318,7 @@ zuruzuru dir default ubi addBtn render1 =
     render { values, dragging } = HK.div [topClass] $ values #
       let top = length values - 1
           isDragged = isDragging dragging
-      in surroundMapWithIndicesWhere ubi adding \i (Tuple k v) ->
+      in surroundMapWithIndicesWhere adding \i (Tuple k v) ->
         let dragged = isDragged k in
         item k (dragStyle dragging k) [ HP.ref (label k) ]
           $ pure $ render1
@@ -416,10 +443,10 @@ demo =
     btn :: forall q. Maybe (q Unit) -> String -> SimpleHTML q m
     btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
 
-    add :: forall q. String -> q Unit -> Maybe (SimpleHTML q m)
-    add t q = Just $ btn (Just q) t
+    add :: forall q. String -> SimpleRenderAdderPart m
+    add t = mkRenderAdderPart (\q -> Just $ btn (Just q) t)
 
-    com1 = zuru Vertical mempty justAfter (add "Add") \{ next, prev, remove, set } -> \handle ->
+    com1 = zuru Vertical mempty (justAfter (add "Add")) \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
         , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
@@ -430,7 +457,7 @@ demo =
         , btn (Just remove) "-"
         ]
 
-    com2 = zuru Horizontal mempty justAfter (add "+") \{ next, prev, remove, set } -> \handle ->
+    com2 = zuru Horizontal mempty (justAfter (add "+")) \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
         , HH.input
@@ -499,10 +526,10 @@ demo2 =
     icon :: forall q f p. String -> H.ParentHTML q f p m
     icon c = HH.i [ cl ["fa", "fa-"<> c ] ] [ ]
 
-    add :: forall q f p. Boolean -> q Unit -> Maybe (H.ParentHTML q f p m)
-    add b q = Just $ btn (["add", size b]) (Just q) "plus"
+    add :: forall q f p. Boolean -> RenderAdderPart f p m
+    add b = mkRenderAdderPart \q -> Just $ btn (["add", size b]) (Just q) "plus"
 
-    inner = zuru Vertical mempty justAfter (add false)
+    inner = zuru Vertical mempty (justAfter (add false))
       \{ next, prev, remove, set } -> \handle ->
         \{ key: k, index: i, value: v, dragged } ->
           HH.div
@@ -522,7 +549,7 @@ demo2 =
               ]
             ]
 
-    outer = zuruzuru Horizontal mempty justAfter (add true)
+    outer = zuruzuru Horizontal mempty (justAfter (add true))
       \{ next, prev, remove, modify } -> \handle ->
         \{ key: k, index: i, value: Tuple v cs, dragged } ->
           HH.div
