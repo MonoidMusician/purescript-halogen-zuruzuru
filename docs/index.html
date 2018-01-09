@@ -2,32 +2,29 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:foo="http://www.w3.org/2000/svg">
   <head>
     <title>Zuruzuru list reordering demo</title>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css?family=Nova+Mono" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
     <style>
       body {
         font-family: monospace;
         font-size: 16px;
       }
-      .material-icons {
-        font-size: inherit;
+      .card {
+        position: relative;
       }
-      .btn.big > .material-icons, .handle.big > .material-icons {
-        font-size: 20px;
-      }
-      .btn.add.big > .material-icons, .btn.remove.big > .material-icons {
-        font-size: 22px;
-      }
+
       a.btn, a.handle {
-        color: purple;
+        color: darkgray;
       }
+
       a.btn.disabled {
         color: gray;
       }
+
       /* Pressed buttons and dragged handles */
       a.btn:not(.disabled):active, .dragged > .handle {
         color: rgb(232, 79, 189);
       }
+
       .handle {
         cursor: move;
         /* ugh rly */
@@ -39,29 +36,41 @@
                 user-select: none; /* Non-prefixed version, currently
                                       supported by Chrome and Opera */
       }
+
       /* I like sort of transparent input boxes that don't look terribly different */
       input {
         border: 1px solid transparent;
         font: inherit;
       }
+
       input:focus {
         border: 1px solid purple;
         outline: none;
       }
+
       /* The numbering isn't really important to see */
       span.number {
         color: gray;
       }
+
       /* This was too close to the left for my liking */
       .number.big {
         margin-left: 4px;
       }
+
       /* Stolen from https://codepen.io/travisw/pen/xOvJYQ */
       .card {
         background-color: #fff;
         border-radius: 2px;
         border: 1px solid lightgrey;
       }
+
+      .card > .btn.remove.big {
+        position: absolute;
+        top: 0;
+        right: 0;
+      }
+
       /* Each item in the horizontal zuruzuru */
       .component > div > div {
         margin-left: 5px;
@@ -69,23 +78,29 @@
         margin-right: 5px;
         vertical-align: top;
       }
+
       /* The components with content in the horizontal zuruzuru */
       .constructor {
       }
+
       /* Each item in the vertical zuru */
       .constructor > div > div {
       }
+
       /* The components with content in the vertical zuru */
       .type {
       }
+
       /* Try to space the `+` over the middle of the handle */
       .btn.add.small {
         margin-left: 1.225em;
       }
+
       /* The inline buttons seem to align better with this */
       .type .btn, .type .handle {
         vertical-align: middle;
       }
+
       /* This doesn't really work but YOLO */
       .btn.add.big {
         vertical-align: middle;

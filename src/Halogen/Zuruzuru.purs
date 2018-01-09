@@ -248,10 +248,13 @@ zuruzuru dir default addBtn render1 =
       Vertical -> ""
 
     item k styl props children = [ Tuple k (HH.div ([itemStyle styl] <> props) children) ]
+
     adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
+
     isDragging dragging key = case dragging of
       Just { key: k } | k == key -> true
       _ -> false
+
     dragStyle :: forall r i. Maybe DragState -> Key -> String
     dragStyle dragging key = case dragging of
       Just { key: k, displacement, offset } | k == key ->
@@ -390,8 +393,10 @@ demo =
   where
     btn :: forall q. Maybe (q Unit) -> String -> SimpleHTML q m
     btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
+
     add :: forall q. String -> q Unit -> Maybe (SimpleHTML q m)
     add t q = Just $ btn (Just q) t
+
     com1 = zuru Vertical mempty (add "Add") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
@@ -402,6 +407,7 @@ demo =
           [ HP.value v, HE.onValueInput (Just <<< set) ]
         , btn (Just remove) "-"
         ]
+
     com2 = zuru Horizontal mempty (add "+") \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
@@ -450,45 +456,53 @@ demo2 =
     , finalizer: Nothing
     }
   where
-    icon :: forall r i. HH.IProp ( "class" :: String | r ) i
-    icon = HP.classes $ map H.ClassName $
-      [ "material-icons" ]
-    but :: forall r i. String -> Boolean -> HH.IProp ( "class" :: String | r ) i
+    cl :: forall r i.  Array String -> HH.IProp ( "class" :: String | r ) i
+    cl s = HP.classes $ map H.ClassName s
+
+    but :: forall r i. Array String -> Boolean -> HH.IProp ( "class" :: String | r ) i
     but c dis = HP.classes $ map H.ClassName $
-      [ "btn", c ] <> (guard dis $> "disabled")
+      ([ "btn"] <> c) <> (guard dis $> "disabled")
+
     handle_ :: forall r i. Boolean -> HH.IProp ( "class" :: String | r ) i
     handle_ b = HP.classes $ map H.ClassName $ [ "handle", size b ]
 
     size = if _ then "big" else "small"
     whenDragged = if _ then " dragged" else ""
 
-    btn :: forall q f p. String -> Maybe (q Unit) -> String -> H.ParentHTML q f p m
-    btn c q t = (compose (HH.a [but c (isNothing q)] <<< pure) <<< HH.i)
-      [ icon, HE.onClick (pure q) ] [ HH.text t ]
-    add :: forall q f p. Boolean -> String -> q Unit -> Maybe (H.ParentHTML q f p m)
-    add b t q = Just $ btn ("add " <> size b) (Just q) t
-    inner = zuru Vertical mempty (add false "+")
+    btn :: forall q f p. Array String -> Maybe (q Unit) -> String -> H.ParentHTML q f p m
+    btn c q t = HH.a
+      [ but c (isNothing q), HE.onClick (pure q) ]
+      [ icon t ]
+
+    icon :: forall q f p. String -> H.ParentHTML q f p m
+    icon c = HH.i [ cl ["fa", "fa-"<> c ] ] [ ]
+
+    add :: forall q f p. Boolean -> q Unit -> Maybe (H.ParentHTML q f p m)
+    add b q = Just $ btn (["add", size b]) (Just q) "plus"
+
+    inner = zuru Vertical mempty (add false)
       \{ next, prev, remove, set } -> \handle ->
         \{ key: k, index: i, value: v, dragged } -> HH.div
           [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
-          [ btn "swap small" prev "keyboard_arrow_up"
-          , HH.a [ handle, handle_ false ] [ HH.i [ icon ] [ HH.text "menu" ] ]
-          , btn "swap small" next "keyboard_arrow_down"
+          [ btn ["swap", "small"] prev "arrow-up"
+          , HH.a [ handle, handle_ false ] [ icon "square" ]
+          , btn ["swap", "small"] next "arrow-down"
           , HH.input
             [ HP.class_ $ H.ClassName "type"
             , HP.placeholder "Type of argument"
             , HP.value v
             , HE.onValueInput \v -> Just (set v)
             ]
-          , btn "remove small" (Just remove) "remove"
+          , btn ["remove", "small"] (Just remove) "remove"
           ]
-    outer = zuruzuru Horizontal mempty (add true "create_new_folder")
+
+    outer = zuruzuru Horizontal mempty (add true)
       \{ next, prev, remove, modify } -> \handle ->
         \{ key: k, index: i, value: Tuple v cs, dragged } -> HH.div
           [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
-          [ btn "swap big" prev "arrow_back"
-          , HH.a [ handle, handle_ true ] [ HH.i [ icon ] [ HH.text "menu" ] ]
-          , btn "swap big" next "arrow_forward"
+          [ btn ["swap","big"] prev "arrow-left"
+          , HH.a [ handle, handle_ true ] [ icon "square" ]
+          , btn ["swap","big"] next "arrow-right"
           , HH.br_
           , HH.input
             [ HP.class_ $ H.ClassName "constructor"
@@ -499,7 +513,7 @@ demo2 =
           , HH.br_
           , HH.slot k inner cs (map modify <<< liftThru)
           , HH.br_
-          , btn "remove big" (Just remove) "delete"
+          , btn ["remove", "big"] (Just remove) "remove"
           ]
 
     update = H.put >>> (_ *> inform)
