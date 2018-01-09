@@ -240,12 +240,13 @@ zuruzuru dir default addBtn render1 =
         Horizontal -> "; display: inline-block"
         Vertical -> "; display: block"
 
-    overflow = "overflow: auto; -webkit-overflow-scrolling: touch; "
+    dirClass :: String
+    dirClass = case dir of
+      Horizontal -> "horizontal"
+      Vertical -> "vertical"
 
-    topStyle :: forall r i. HP.IProp ( style :: String | r ) i
-    topStyle = HP.attr (H.AttrName "style") $ overflow <> case dir of
-      Horizontal -> "white-space: nowrap;"
-      Vertical -> ""
+    topClass :: forall r i.  HH.IProp ( "class" :: String | r ) i
+    topClass = HP.classes $ map H.ClassName $ pure dirClass
 
     item k styl props children = [ Tuple k (HH.div ([itemStyle styl] <> props) children) ]
 
@@ -266,7 +267,7 @@ zuruzuru dir default addBtn render1 =
       _ -> ""
 
     render :: State e -> H.ParentHTML (Query o e) g p m
-    render { values, dragging } = HK.div [topStyle] $ values #
+    render { values, dragging } = HK.div [topClass] $ values #
       let top = length values - 1
           isDragged = isDragging dragging
       in surroundMapWithIndices adding \i (Tuple k v) ->
