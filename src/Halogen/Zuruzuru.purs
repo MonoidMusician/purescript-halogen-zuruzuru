@@ -15,10 +15,8 @@ module Halogen.Zuruzuru
   , Key
   , SimpleHTML
   , RenderAdderWhere
-  , RenderAdderPart
-  , SimpleRenderAdderPart
-  , mkRenderAdderPart
-  , runRenderAdderPart
+  , RenderAdder
+  , RenderAdderIn
   , everywhere
   , justAfter
   , justBefore
@@ -134,26 +132,42 @@ type RenderAdderWhere a =
   , after :: Maybe a
   }
 
-foreign import data RenderAdderPart :: (Type -> Type) -> Type -> (Type -> Type) -> Type
-type SimpleRenderAdderPart = RenderAdderPart (Const Void) Void
+type RenderAdder g p m = (forall q. RenderAdderIn q g p m)
+type RenderAdderIn q g p m = q Unit -> Maybe (H.ParentHTML q g p m)
 
-mkRenderAdderPart :: forall g p m. (forall q. q Unit -> Maybe (H.ParentHTML q g p m)) -> RenderAdderPart g p m
-mkRenderAdderPart = unsafeCoerce
+chooseQuery :: forall g p m q. RenderAdderWhere (RenderAdder g p m) -> RenderAdderWhere (RenderAdderIn q g p m)
+chooseQuery { before, between, after } =
+  { before: before <#> \q -> q
+  , between: between <#> \q -> q
+  , after: after <#> \q -> q
+  }
 
-runRenderAdderPart :: forall g p m. RenderAdderPart g p m -> (forall q. q Unit -> Maybe (H.ParentHTML q g p m))
-runRenderAdderPart = unsafeCoerce
+mkJust :: forall g p m. RenderAdder g p m -> Maybe (RenderAdder g p m)
+mkJust = Just :: RenderAdder g p m -> Maybe (RenderAdder g p m)
 
-justAfter :: forall a. a -> RenderAdderWhere a
-justAfter a = { before: Nothing, between: Nothing, after: Just a }
+justAfter :: forall g p m. RenderAdder g p m -> RenderAdderWhere (RenderAdder g p m)
+justAfter a = { before: Nothing, between: Nothing, after: mkJust a }
 
-justBefore :: forall a. a -> RenderAdderWhere a
-justBefore a = { before: Just a, between: Nothing, after: Nothing }
+justAfter' :: forall a. a -> RenderAdderWhere a
+justAfter' a = { before: Nothing, between: Nothing, after: Just a }
 
-inside :: forall a. a -> RenderAdderWhere a
-inside a = { before: Nothing, between: Just a, after: Nothing }
+justBefore :: forall g p m. RenderAdder g p m -> RenderAdderWhere (RenderAdder g p m)
+justBefore a = { before: Nothing, between: Nothing, after: mkJust a }
 
-everywhere :: forall a. a -> RenderAdderWhere a
-everywhere a = { before: Just a, between: Just a, after: Just a }
+justBefore' :: forall a. a -> RenderAdderWhere a
+justBefore' a = { before: Just a, between: Nothing, after: Nothing }
+
+inside :: forall g p m. RenderAdder g p m -> RenderAdderWhere (RenderAdder g p m)
+inside a = { before: Nothing, between: mkJust a, after: Nothing }
+
+inside' :: forall a. a -> RenderAdderWhere a
+inside' a = { before: Nothing, between: Just a, after: Nothing }
+
+everywhere :: forall g p m. RenderAdder g p m -> RenderAdderWhere (RenderAdder g p m)
+everywhere a = { before: mkJust a, between: mkJust a, after: mkJust a }
+
+everywhere' :: forall a. a -> RenderAdderWhere a
+everywhere' a = { before: Just a, between: Just a, after: Just a }
 
 mapRenderAdderWhere :: forall a b. (a -> b) -> RenderAdderWhere a -> RenderAdderWhere b
 mapRenderAdderWhere f { before, between, after } =
@@ -239,7 +253,7 @@ zuru :: forall m e o eff.
   -- | Default value
   e ->
   -- | How and where to render a button for adding a component
-  RenderAdderWhere (RenderAdderPart (Const Void) Void m) ->
+  RenderAdderWhere (RenderAdder (Const Void) Void m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
   (forall q. Helpers o q e -> Handle q -> Item e -> SimpleHTML q m) ->
@@ -264,8 +278,7 @@ zuruzuru :: forall m e o eff g p.
   -- | Default value
   e ->
   -- | How and where to render a button for adding a component
-  -- Ugh. Impredicativity in records is the worst!
-  RenderAdderWhere (RenderAdderPart g p m) ->
+  RenderAdderWhere (RenderAdder g p m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
   (forall q. Helpers o q e -> Handle q -> Item e -> H.ParentHTML q g p m) ->
@@ -298,7 +311,7 @@ zuruzuru dir default addBtns render1 =
     item k styl props children = [ Tuple k (HH.div ([itemClass, itemStyle styl] <> props) children) ]
 
     adding1 addBtn i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
-    adding = mapRenderAdderWhere (adding1 <<< runRenderAdderPart) addBtns
+    adding = mapRenderAdderWhere adding1 (chooseQuery addBtns)
 
     isDragging dragging key = case dragging of
       Just { key: k } | k == key -> true
@@ -440,13 +453,13 @@ demo =
     , finalizer: Nothing
     }
   where
-    btn :: forall q. Maybe (q Unit) -> String -> SimpleHTML q m
+    btn :: forall q g p. Maybe (q Unit) -> String -> H.ParentHTML q g p m
     btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
 
-    add :: forall q. String -> SimpleRenderAdderPart m
-    add t = mkRenderAdderPart (\q -> Just $ btn (Just q) t)
+    add :: forall g p. String -> RenderAdder g p m
+    add t q = Just $ btn (Just q) t
 
-    com1 = zuru Vertical mempty (justAfter (add "Add")) \{ next, prev, remove, set } -> \handle ->
+    com1 = zuru Vertical mempty (justAfter (\q -> add "Add" q)) \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
         , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
@@ -526,8 +539,8 @@ demo2 =
     icon :: forall q f p. String -> H.ParentHTML q f p m
     icon c = HH.i [ cl ["fa", "fa-"<> c ] ] [ ]
 
-    add :: forall q f p. Boolean -> RenderAdderPart f p m
-    add b = mkRenderAdderPart \q -> Just $ btn (["add", size b]) (Just q) "plus"
+    add :: forall q f p. Boolean -> RenderAdder f p m
+    add b q = Just $ btn (["add", size b]) (Just q) "plus"
 
     inner = zuru Vertical mempty (justAfter (add false))
       \{ next, prev, remove, set } -> \handle ->
@@ -549,7 +562,7 @@ demo2 =
               ]
             ]
 
-    outer = zuruzuru Horizontal mempty (justAfter (add true))
+    outer = zuruzuru Vertical mempty (justAfter (add true))
       \{ next, prev, remove, modify } -> \handle ->
         \{ key: k, index: i, value: Tuple v cs, dragged } ->
           HH.div
