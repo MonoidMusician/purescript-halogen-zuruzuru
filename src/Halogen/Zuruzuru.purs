@@ -490,6 +490,7 @@ demo2 =
               [ HH.a [ handle, handle_ false ] [ HH.text "■" ]
               , btn ["swap", "small"] prev "arrow-up"
               , btn ["swap", "small"] next "arrow-down"
+              , btn ["remove", "small"] (Just remove) "remove"
               ]
             , HH.input
               [ HP.class_ $ H.ClassName "type"
@@ -497,7 +498,6 @@ demo2 =
               , HP.value v
               , HE.onValueInput \v -> Just (set v)
               ]
-            , btn ["remove", "small"] (Just remove) "remove"
             ]
 
     outer = zuruzuru Horizontal mempty (const Nothing)
@@ -510,6 +510,7 @@ demo2 =
               [ HH.a [ handle, handle_ true ] [ HH.text "■" ]
               , btn ["swap","big"] prev "arrow-left"
               , btn ["swap","big"] next "arrow-right"
+              , btn ["remove", "big"] (Just remove) "remove"
               ]
             , HH.input
               [ HP.class_ $ H.ClassName "constructor"
@@ -518,7 +519,6 @@ demo2 =
               , HE.onValueInput \v -> Just (modify (setl v))
               ]
             , HH.slot k inner cs (map modify <<< liftThru)
-            , btn ["remove", "big"] (Just remove) "remove"
             ]
 
     update = H.put >>> (_ *> inform)
