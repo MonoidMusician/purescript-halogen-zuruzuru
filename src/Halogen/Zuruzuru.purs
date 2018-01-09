@@ -36,7 +36,7 @@ import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
 import DOM.HTML.HTMLElement (getBoundingClientRect)
 import DOM.Node.ParentNode (QuerySelector(..))
-import Data.Array (deleteAt, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, updateAt, (!!))
+import Data.Array (deleteAt, dropWhile, filter, findIndex, findLastIndex, fromFoldable, insertAt, length, reverse, updateAt, (!!))
 import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldMapWithIndex)
@@ -445,9 +445,9 @@ demo2 :: forall u v m eff.
 demo2 =
   H.lifecycleParentComponent
     { initialState: const
-      [ Tuple "This" ["a"]
-      , Tuple "That" ["b"]
-      , Tuple "These" ["a", "b"]
+      [ Tuple "This" ["a",""]
+      , Tuple "That" ["b",""]
+      , Tuple "These" ["a", "b",""]
       ]
     , render
     , eval
@@ -480,7 +480,7 @@ demo2 =
     add :: forall q f p. Boolean -> q Unit -> Maybe (H.ParentHTML q f p m)
     add b q = Just $ btn (["add", size b]) (Just q) "plus"
 
-    inner = zuru Vertical mempty (add false)
+    inner = zuru Vertical mempty (const Nothing)
       \{ next, prev, remove, set } -> \handle ->
         \{ key: k, index: i, value: v, dragged } -> HH.div
           [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
@@ -524,7 +524,11 @@ demo2 =
     setl a (Tuple _ b) = Tuple a b
     setr b (Tuple a _) = Tuple a b
 
-    liftThru (Left (NewState cs)) = Just $ setr cs
+    addEmpty :: Array String -> Array String
+    addEmpty = (_ <> [""]) <<< reverse <<< dropWhile (eq "") <<< reverse
+
+    -- | This might screw with the keying of the nodes, but not too badly ...
+    liftThru (Left (NewState cs)) = Just $ setr $ addEmpty cs
     liftThru _ = Nothing
 
     lifting (Left m) = Just (Tuple m unit)
