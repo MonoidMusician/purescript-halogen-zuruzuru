@@ -235,10 +235,9 @@ zuruzuru dir default addBtn render1 =
     label i = H.RefLabel ("zuruzuru-component" <> i) :: H.RefLabel
 
     itemStyle :: forall r i. String -> HP.IProp ( style :: String | r ) i
-    itemStyle = HP.attr (H.AttrName "style") <<< (_ <> display) where
-      display = case dir of
-        Horizontal -> "; display: inline-block"
-        Vertical -> "; display: block"
+    itemStyle = HP.attr (H.AttrName "style")
+
+    itemClass =  topClass
 
     dirClass :: String
     dirClass = case dir of
@@ -248,7 +247,7 @@ zuruzuru dir default addBtn render1 =
     topClass :: forall r i.  HH.IProp ( "class" :: String | r ) i
     topClass = HP.classes $ map H.ClassName $ pure dirClass
 
-    item k styl props children = [ Tuple k (HH.div ([itemStyle styl] <> props) children) ]
+    item k styl props children = [ Tuple k (HH.div ([itemClass, itemStyle styl] <> props) children) ]
 
     adding i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
 
