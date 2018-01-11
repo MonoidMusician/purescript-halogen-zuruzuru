@@ -251,7 +251,7 @@ zuru :: forall m e o eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
   Direction ->
   -- | Default value
-  e ->
+  m e ->
   -- | How and where to render a button for adding a component
   RenderAdderWhere (RenderAdder (Const Void) Void m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
@@ -276,7 +276,7 @@ zuruzuru :: forall m e o eff g p.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
   Direction ->
   -- | Default value
-  e ->
+  m e ->
   -- | How and where to render a button for adding a component
   RenderAdderWhere (RenderAdder g p m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
@@ -374,7 +374,8 @@ zuruzuru dir default addBtns render1 =
       notify
     eval (Add i next) = next <$ do
       k <- append "item" <<< show <$> fresh'
-      _values %= (fromMaybe <*> insertAt i (Tuple k default))
+      v <- H.lift default
+      _values %= (fromMaybe <*> insertAt i (Tuple k v))
       notify
     eval (Remove k next) = next <$ do
       _values %= filter (fst >>> notEq k)
@@ -459,7 +460,7 @@ demo =
     add :: forall g p. String -> RenderAdder g p m
     add t q = Just $ btn (Just q) t
 
-    com1 = zuru Vertical mempty (justAfter (\q -> add "Add" q)) \{ next, prev, remove, set } -> \handle ->
+    com1 = zuru Vertical (pure mempty) (justAfter (\q -> add "Add" q)) \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ btn prev "▲"
         , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
@@ -470,7 +471,7 @@ demo =
         , btn (Just remove) "-"
         ]
 
-    com2 = zuru Horizontal mempty (justAfter (add "+")) \{ next, prev, remove, set } -> \handle ->
+    com2 = zuru Horizontal (pure mempty) (justAfter (add "+")) \{ next, prev, remove, set } -> \handle ->
       \{ key: k, index: i, value: v } -> HH.div_
         [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
         , HH.input
@@ -542,7 +543,7 @@ demo2 =
     add :: forall q f p. Boolean -> RenderAdder f p m
     add b q = Just $ btn (["add", size b]) (Just q) "plus"
 
-    inner = zuru Vertical mempty (justAfter (add false))
+    inner = zuru Vertical (pure mempty) (justAfter (add false))
       \{ next, prev, remove, set } -> \handle ->
         \{ key: k, index: i, value: v, dragged } ->
           HH.div
@@ -562,7 +563,7 @@ demo2 =
               ]
             ]
 
-    outer = zuruzuru Vertical mempty (justAfter (add true))
+    outer = zuruzuru Vertical (pure mempty) (justAfter (add true))
       \{ next, prev, remove, modify } -> \handle ->
         \{ key: k, index: i, value: Tuple v cs, dragged } ->
           HH.div
