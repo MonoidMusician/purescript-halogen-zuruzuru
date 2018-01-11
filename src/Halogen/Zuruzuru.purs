@@ -1,22 +1,42 @@
 module Halogen.Zuruzuru
   ( zuruzuru
   , zuru
-  , Direction(..)
-  , Helpers
-  , Handle
-  , Item
-  , Query(..)
-  , Message(..)
-  , Output
-  , SimpleOutput
-  , State
-  , DragState
   , Keyed
   , Key
-  , SimpleHTML
+  , Direction(..)
+  , Input
+  , SimpleInput
+  , MuteInput
+  , MuteSimpleInput
+  , Helpers
+  , Handle
+  , ItemInfo
+  , RenderingInfoR
+  , RenderingInfo
+  , SimpleRenderingInfo
+  , MuteRenderingInfo
+  , MuteSimpleRenderingInfo
   , RenderAdderWhere
   , RenderAdder
   , RenderAdderIn
+  , Message(..)
+  , Output
+  , MuteOutput
+  , Query(..)
+  , RealQuery
+  , RealSimpleQuery
+  , MuteRealQuery
+  , MuteRealSimpleQuery
+  , State
+  , StateR
+  , RealState
+  , RealSimpleState
+  , MuteRealState
+  , MuteRealSimpleState
+  , DragState
+  , NoSubOutput
+  , NoSubQuery
+  , NoSlot
   , everywhere
   , justAfter
   , justBefore
@@ -27,7 +47,6 @@ module Halogen.Zuruzuru
 
 import Prelude
 
-import Control.Apply (lift2)
 import Control.Comonad (extract)
 import Control.Extend (extend)
 import Control.Monad.Aff.Class (class MonadAff)
@@ -37,7 +56,6 @@ import Control.Monad.Eff.Console (CONSOLE, log, logShow)
 import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Eff.Ref (REF)
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
-import Control.Monad.State (class MonadState)
 import Control.MonadZero (guard)
 import DOM (DOM)
 import DOM.Event.Types (MouseEvent)
@@ -69,13 +87,129 @@ import Unsafe.Coerce (unsafeCoerce)
 -- | An element with a key (string), pretty simple.
 type Keyed = Tuple Key
 
--- | Items are kept track of with a string key, for Halogen's keyed elements.
+-- | ItemInfos are kept track of with a string key, for Halogen's keyed elements.
 type Key = String
 
+-- | The direction to render the list.
+data Direction = Vertical | Horizontal
+
+-- | The input to the component. In general, parameters are named like this:
+-- |
+-- | - `g`: The type of queries of the children, or `NoSubQuery = Const Void`
+-- |    if none.
+-- | - `p`: The type of child slots, or `NoSlot = Void` if none.
+-- | - `m`: The monad this component runs in.
+-- | - `o`: Any other output passed through the component, from the rendered
+-- |    `HTML` to the output type of the zuruzuru component.
+-- | - `e`: The type of items being rendered and edited in this component.
+type Input g p m o e = RenderingInfo g p m o e ( values :: Array e )
+-- | Simple input, where there are no child slots. (Helps with ambiguous type
+-- | variables).
+type SimpleInput m o e = Input NoSubQuery NoSlot m o e
+-- | Mute input, where there is no output.
+type MuteInput g p m e = Input g p m NoSubOutput e
+-- | Mute simple input, yeah.
+type MuteSimpleInput m e = SimpleInput m NoSubOutput e
+
+-- | The (opaque) queries to perform certain actions on a particular item.
+-- |
+-- | - `remove`: Remove this item.
+-- | - `modify`: Change this item's value based on its previous value.
+-- | - `set`: Give this item a new value.
+-- | - `prev`: Swap this item with the previous one, if it is not the first.
+-- | - `next`: Swap this item with the next one, if not the last.
+-- | - `output`: Lift an output query through the component.
+type Helpers o q e =
+  { prev :: Maybe (q Unit)
+  , next :: Maybe (q Unit)
+  , modify :: (e -> e) -> q Unit
+  , remove :: q Unit
+  , set :: e -> q Unit
+  , output :: o -> q Unit
+  }
+
+-- | The property for a handler. Not in the `Helpers` record because records
+-- | hate impredicativity.
+type Handle q = forall r. H.IProp ( onMouseDown :: MouseEvent | r ) q
+
+-- | Information about an item stored in state.
+-- |
+-- | - `key`: The unique key given to this item.
+-- | - `index`: The current index of this item.
+-- | - `value`: The current value of this item.
+-- | - `dragged`: Whether this item is being dragged.
+type ItemInfo e =
+  { key :: String
+  , index :: Int
+  , value :: e
+  , dragged :: Boolean
+  }
+
+-- | All of this data is provided to the component on every updated and stored
+-- | in state, so it can be updated while the component is running.
+-- |
+-- | - `direction`: Whether the component renders vertically or horizontally.
+-- | - `default`: The default value for a new item. May be monadic.
+-- | - `render.adder`: Where and how to render buttons to add new items. See
+-- |    below.
+-- | - `render.item`: How to render an item.
+type RenderingInfoR g p m o e r =
+  ( direction :: Direction
+  , default :: m e
+  , render ::
+    { adder :: RenderAdderWhere (RenderAdder g p m)
+    , item :: forall q. Helpers o q e -> Handle q -> ItemInfo e -> H.ParentHTML q g p m
+    }
+  | r
+  )
+-- | The same thing but as a record.
+type RenderingInfo g p m o e r = Record (RenderingInfoR g p m o e r)
+-- | The record when there are no child components.
+type SimpleRenderingInfo m o e r = RenderingInfo NoSubQuery NoSlot m o e r
+-- | The record when output is nil.
+type MuteRenderingInfo g p m e r = RenderingInfo g p m NoSubOutput e r
+-- | The combination of the above.
+type MuteSimpleRenderingInfo m e r = SimpleRenderingInfo m NoSubOutput e r
+
+-- | Where and how to render an element to add an item. Set to `Nothing` to
+-- | avoid rendering something, otherwise provide a renderer with `mkJust`.
+-- | Actually best to use the prebuilt constructors that handle common cases.
+-- |
+-- | `before` means that (if there is at least one item) an adder will be
+-- | rendered before the start of the list; `between` means an adder will be
+-- | rendered between each item in the list; and `after` renders after the
+-- | whole list (which may be possibly empty).
+type RenderAdderWhere a =
+  { before :: Maybe a
+  , between :: Maybe a
+  , after :: Maybe a
+  }
+
+-- | The type of a rendering function, which does not have access to the query
+-- | type. Impredicative, be warned!
+type RenderAdder g p m = (forall q. RenderAdderIn q g p m)
+-- | The type of a rendering function when supplied with a specific query type.
+type RenderAdderIn q g p m = q Unit -> Maybe (H.ParentHTML q g p m)
+
+-- | The output message from the component.
+data Message e
+  = NewState (Array e)
+  | Preview (Array e)
+  | DragStart
+  | DragEnd
+
+-- | Either a message from the component or the out passed through the component.
+type Output o e = Either (Message e) o
+-- | Combine `Output` with `NoSubOutput`
+type MuteOutput e = Output NoSubOutput e
+-- | Another `Void` synonym, for when the rendered HTML has no output of its own.
+type NoSubOutput = Void
+
 -- | Query for the component.
-data Query o e a
+data Query i o e a
   -- | Reset all the items in this component
   = Reset (Array e) a
+  | NewInput i a
   -- | Add a component at this index (between 0 and the length of the existing
   -- | elements, inclusive)
   | Add Int a
@@ -95,46 +229,51 @@ data Query o e a
   -- | Raise an output through the component.
   | Output o a
 
--- | The output message from the component.
-data Message e
-  = NewState (Array e)
-  | Preview (Array e)
-  | DragStart
-  | DragEnd
+-- | Fill in the type parameter `i` in the `Query` with the actual input to the
+-- | component.
+type RealQuery g p m o e = Query (Input g p m o e) o e
+type RealSimpleQuery m o e = Query (SimpleInput m o e) o e
+type MuteRealQuery g p m e = RealQuery g p m NoSubOutput e
+type MuteRealSimpleQuery m e = RealSimpleQuery m NoSubOutput e
 
--- | Either a message from the component or the out passed through the component.
-type Output o e = Either (Message e) o
+-- | Used to fill in where a child query is expected, in "simple" components.
+type NoSubQuery = Const Void
+-- | Used to fill for a child slot in simple components.
+type NoSlot = Void
 
--- | No output will be passed through, `Void`
-type SimpleOutput e = Output Void e
-
--- | The state of the component.
-type State e =
-  { values :: Array (Keyed e)
+-- | Extensible *row* for the state of the component.
+type StateR e r =
+  ( values :: Array (Keyed e)
   , dragging :: Maybe DragState
   , supply :: Int
-  }
+  | r
+  )
+-- | Extensible *record* for the state of the component.
+type State e r = Record (StateR e r)
+-- | The full state, taking into account the rendering info too.
+type RealState g p m o e = State e (RenderingInfoR g p m o e ())
+-- | The full state for a non-parent component.
+type RealSimpleState m o e = RealState NoSubQuery NoSlot m o e
+-- | The full state when there is no output.
+type MuteRealState g p m e = RealState g p m NoSubOutput e
+-- | The full state for a non-parent component with output just from this component.
+type MuteRealSimpleState m e = RealSimpleState m NoSubOutput e
 
 -- | State maintained while dragging. Together the numbers are used to
 -- | translate the corresponding item (using a CSS transform).
+-- |
+-- | - `key`: The key of the item being dragged.
+-- | - `offset`: The offset from its original position, whence it was dragged.
+-- | - `displacement`: The displacement of the mouse from the start of the drag.
 type DragState =
-  { -- | The key of the item being dragged
-    key :: String
-  -- | The offset from its original position, whence it was dragged
+  { key :: String
   , offset :: Number
-  -- | The displacement of the mouse from the start of the drag
   , displacement :: Number
   }
 
-type RenderAdderWhere a =
-  { before :: Maybe a
-  , between :: Maybe a
-  , after :: Maybe a
-  }
-
-type RenderAdder g p m = (forall q. RenderAdderIn q g p m)
-type RenderAdderIn q g p m = q Unit -> Maybe (H.ParentHTML q g p m)
-
+-- | Helper, this is a proof that (despite impredicativity) we can select a
+-- | particular query type for the abstracted one that we required the caller
+-- | to give.
 chooseQuery :: forall g p m q. RenderAdderWhere (RenderAdder g p m) -> RenderAdderWhere (RenderAdderIn q g p m)
 chooseQuery { before, between, after } =
   { before: before <#> \q -> q
@@ -142,9 +281,11 @@ chooseQuery { before, between, after } =
   , after: after <#> \q -> q
   }
 
+-- | Make a `Just` renderer, helps with inference.
 mkJust :: forall g p m. RenderAdder g p m -> Maybe (RenderAdder g p m)
 mkJust = Just :: RenderAdder g p m -> Maybe (RenderAdder g p m)
 
+-- | Render an adder just after the list.
 justAfter :: forall g p m. RenderAdder g p m -> RenderAdderWhere (RenderAdder g p m)
 justAfter a = { before: Nothing, between: Nothing, after: mkJust a }
 
@@ -176,23 +317,17 @@ mapRenderAdderWhere f { before, between, after } =
   , after: f <$> after
   }
 
-fresh :: forall s m. MonadState s m => Lens' s Int -> m Int
-fresh lens = use lens <* H.modify (lens (_+1))
-
-_values :: forall e. Lens' (State e) (Array (Keyed e))
+_values :: forall e r. Lens' (State e r) (Array (Keyed e))
 _values = prop (SProxy :: SProxy "values")
 
-_dragging :: forall e. Lens' (State e) (Maybe DragState)
+_dragging :: forall e r. Lens' (State e r) (Maybe DragState)
 _dragging = prop (SProxy :: SProxy "dragging")
 
-_dragKey :: forall e. Traversal' (State e) String
+_dragKey :: forall e r. Traversal' (State e r) String
 _dragKey = _dragging <<< _Just <<< prop (SProxy :: SProxy "key")
 
-_offset :: forall e. Traversal' (State e) Number
+_offset :: forall e r. Traversal' (State e r) Number
 _offset = _dragging <<< _Just <<< prop (SProxy :: SProxy "offset")
-
-initialState :: Array ~> State
-initialState vs = { values: addKeys vs, supply: length vs, dragging: Nothing }
 
 addKeys :: forall e. Array e -> Array (Keyed e)
 addKeys = mapWithIndex (Tuple <<< append "item" <<< show)
@@ -209,55 +344,10 @@ surroundMapWithIndicesWhere { before, after, between } f as =
         in foldMap (_ $ i) addSpacer <> f i a
   in notAfter <> foldMap (_ $ length as) after
 
--- | The (opaque) queries to perform certain actions on an item.
-type Helpers o q e =
-  { -- | Swap this item with the previous one, if not the first
-    prev :: Maybe (q Unit)
-  -- | Swap this item with the next one, if not the last
-  , next :: Maybe (q Unit)
-  -- | Remove this item
-  , remove :: q Unit
-  -- | Give this item a new value
-  , set :: e -> q Unit
-  -- | Modify this item's value
-  , modify :: (e -> e) -> q Unit
-  -- | Lift an output query through the component
-  , output :: o -> q Unit
-  }
-
--- | The property for a handler. No in the `Helpers` record because records
--- | hate impredicativity.
-type Handle q = forall r. H.IProp ( onMouseDown :: MouseEvent | r ) q
-
--- | Information about an item stored in state.
-type Item e =
-  { -- | The unique key given to this item
-    key :: String
-  -- | The current index of this item
-  , index :: Int
-  -- | The current value of this item
-  , value :: e
-  , dragged :: Boolean
-  }
-
--- | Whether the list is rendered vertically or horizontally. Horizontal has
--- | a (horizontal) scrollbar when needed.
-data Direction = Vertical | Horizontal
-
-type SimpleHTML q m = H.ParentHTML q (Const Void) Void m
-
 -- | `zuruzuru` minus the higher-order parent component junk.
-zuru :: forall m e o eff.
+zuru :: forall m e o i eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
-  Direction ->
-  -- | Default value
-  e ->
-  -- | How and where to render a button for adding a component
-  RenderAdderWhere (RenderAdder (Const Void) Void m) ->
-  -- | Render an item given certain queries, an `onMouseDown` property for the
-  -- | draggable handle, and information about the item.
-  (forall q. Helpers o q e -> Handle q -> Item e -> SimpleHTML q m) ->
-  H.Component HH.HTML (Query o e) (Array e) (Output o e) m
+  H.Component HH.HTML (RealSimpleQuery m o e) (SimpleInput m o e) (Output o e) m
 zuru = zuruzuru
 
 -- | Render a `zuruzuru` component! Allows a list of components to be edited
@@ -270,29 +360,28 @@ zuru = zuruzuru
 -- |     and at the start and end of the list)
 -- |   - A way of (definitely) rendering each list item, given certain queries
 -- |     (see `Helpers`), an `onMouseDown` property for the drag handle, and
--- |     information about the item (including its position, see `Item`)
-zuruzuru :: forall m e o eff g p.
+-- |     information about the item (including its position, see `ItemInfo`)
+zuruzuru :: forall g p m o e eff s.
   Ord p =>
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
-  Direction ->
-  -- | Default value
-  e ->
-  -- | How and where to render a button for adding a component
-  RenderAdderWhere (RenderAdder g p m) ->
-  -- | Render an item given certain queries, an `onMouseDown` property for the
-  -- | draggable handle, and information about the item.
-  (forall q. Helpers o q e -> Handle q -> Item e -> H.ParentHTML q g p m) ->
-  H.Component HH.HTML (Query o e) (Array e) (Output o e) m
-zuruzuru dir default addBtns render1 =
+  H.Component HH.HTML (RealQuery g p m o e) (Input g p m o e) (Output o e) m
+zuruzuru =
   H.lifecycleParentComponent
     { initialState
     , render
     , eval
-    , receiver: HE.input Reset
+    , receiver: HE.input NewInput
     , initializer: Nothing
     , finalizer: Nothing
     }
   where
+    initialState = \{ direction, default, render, values } ->
+      { direction, default, render
+      , values: addKeys values
+      , supply: length values
+      , dragging: Nothing
+      }
+
     label i = H.RefLabel ("zuruzuru-component" <> i) :: H.RefLabel
 
     itemStyle :: forall r i. String -> HP.IProp ( style :: String | r ) i
@@ -300,58 +389,66 @@ zuruzuru dir default addBtns render1 =
 
     itemClass =  topClass
 
-    dirClass :: String
-    dirClass = case dir of
+    dirClass :: Direction -> String
+    dirClass = case _ of
       Horizontal -> "horizontal"
       Vertical -> "vertical"
 
-    topClass :: forall r i.  HH.IProp ( "class" :: String | r ) i
-    topClass = HP.classes $ map H.ClassName $ pure dirClass
+    topClass :: forall r i. Direction -> HH.IProp ( "class" :: String | r ) i
+    topClass = HP.classes <<< map H.ClassName <<< pure <<< dirClass
 
-    item k styl props children = [ Tuple k (HH.div ([itemClass, itemStyle styl] <> props) children) ]
-
-    adding1 addBtn i = join $ fromFoldable $ addBtn (Add i unit) <#> \b -> item ("add" <> show i) "" [] [ b ]
-    adding = mapRenderAdderWhere adding1 (chooseQuery addBtns)
-
-    isDragging dragging key = case dragging of
-      Just { key: k } | k == key -> true
-      _ -> false
-
-    dragStyle :: forall r i. Maybe DragState -> Key -> String
-    dragStyle dragging key = case dragging of
+    dragStyleD :: forall r i. Direction -> Maybe DragState -> Key -> String
+    dragStyleD direction dragging key = case dragging of
       Just { key: k, displacement, offset } | k == key ->
         let
-          axis = case dir of
+          axis = case direction of
             Horizontal -> "X"
             Vertical -> "Y"
         in "transform: translate" <> axis <> "(" <> show (displacement - offset) <> "px)"
       _ -> ""
 
-    render :: State e -> H.ParentHTML (Query o e) g p m
-    render { values, dragging } = HK.div [topClass] $ values #
-      let top = length values - 1
-          isDragged = isDragging dragging
-      in surroundMapWithIndicesWhere adding \i (Tuple k v) ->
-        let dragged = isDragged k in
-        item k (dragStyle dragging k) [ HP.ref (label k) ]
-          $ pure $ render1
-            { prev: guard (i > 0) $> Swap i (i-1) unit
-            , next: guard (i < top) $> Swap i (i+1) unit
-            , remove: Remove k unit
-            , set: \e -> Update k (const e) unit
-            , modify: Update k <@> unit
-            , output: Output <@> unit
-            } (HE.onMouseDown (HE.input (Dragging k)))
-            { key: k, index: i, value: v, dragged }
+    item dir k styl props children =
+      [ Tuple k (HH.div ([itemClass dir, itemStyle styl] <> props) children) ]
 
-    mid = case dir of
-      Vertical -> _.top `lift2 (+)` _.bottom >>> (_ / 2.0)
-      Horizontal -> _.left `lift2 (+)` _.right >>> (_ / 2.0)
+    isDragging dragging key = case dragging of
+      Just { key: k } | k == key -> true
+      _ -> false
+
+    render :: RealState g p m o e -> H.ParentHTML (RealQuery g p m o e) g p m
+    render = \{ direction, default, render, values, dragging } ->
+      HK.div [topClass direction] $ values #
+        let
+          top = length values - 1
+          isDragged = isDragging dragging
+          dragStyle = dragStyleD direction
+
+          adding1 addBtn i = join $ fromFoldable $ addBtn (Add i unit) <#>
+            \b -> item direction ("add" <> show i) "" [] [ b ]
+          adding = mapRenderAdderWhere adding1 (chooseQuery render.adder)
+
+        in surroundMapWithIndicesWhere adding \i (Tuple k v) ->
+          let dragged = isDragged k in
+          item direction k (dragStyle dragging k) [ HP.ref (label k) ]
+            $ pure $ render.item
+              { prev: guard (i > 0) $> Swap i (i-1) unit
+              , next: guard (i < top) $> Swap i (i+1) unit
+              , remove: Remove k unit
+              , set: \e -> Update k (const e) unit
+              , modify: Update k <@> unit
+              , output: Output <@> unit
+              } (HE.onMouseDown (HE.input (Dragging k)))
+              { key: k, index: i, value: v, dragged }
+
+    mid bb = do
+      direction <- H.gets _.direction
+      pure case direction of
+        Vertical -> (bb.top + bb.bottom) / 2.0
+        Horizontal -> (bb.left + bb.right) / 2.0
 
     -- getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) (Output o e) m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
-      mid <$> H.liftEff (getBoundingClientRect (unsafeCoerce e))
+      mid =<< H.liftEff (getBoundingClientRect (unsafeCoerce e))
 
     -- getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
     getPoses =
@@ -359,22 +456,25 @@ zuruzuru dir default addBtns render1 =
         traverse \(Tuple k _) ->
           runMaybeT $ getPos k
 
-    fresh' = fresh (prop (SProxy :: SProxy "supply"))
-
     notify = use _values >>= H.raise <<< Left <<< NewState <<< map extract
 
-    eval :: Query o e ~> H.ParentDSL (State e) (Query o e) g p (Output o e) m
+    eval :: RealQuery g p m o e ~> H.ParentDSL (RealState g p m o e) (RealQuery g p m o e) g p (Output o e) m
     eval (Output o next) = next <$ do
       H.raise $ Right o
     eval (Reset values next) = next <$ do
       H.liftEff $ log "Reset"
+      H.modify _ { values = addKeys values, supply = length values }
+    eval (NewInput values next) = next <$ do
       H.put (initialState values)
     eval (Update k f next) = next <$ do
       _values %= map (extend \(Tuple k' v) -> if k == k' then f v else v)
       notify
     eval (Add i next) = next <$ do
-      k <- append "item" <<< show <$> fresh'
-      _values %= (fromMaybe <*> insertAt i (Tuple k default))
+      sup <- H.gets _.supply
+      let k = show sup
+      H.modify _ { supply = sup + 1 }
+      v <- H.lift =<< H.gets _.default
+      _values %= (fromMaybe <*> insertAt i (Tuple k v))
       notify
     eval (Remove k next) = next <$ do
       _values %= filter (fst >>> notEq k)
@@ -406,8 +506,9 @@ zuruzuru dir default addBtns render1 =
       _dragging ?= { key: k, displacement: 0.0, offset: 0.0 }
       H.lift $ H.raise $ Left $ DragStart
     eval (Move (Drag.Move e d) next) = next <$ do
+      direction <- H.gets _.direction
       let
-        mouseMovement = case dir of
+        mouseMovement = case direction of
           Horizontal -> d.offsetX
           Vertical -> d.offsetY
       H.liftEff $ logShow mouseMovement
@@ -459,24 +560,42 @@ demo =
     add :: forall g p. String -> RenderAdder g p m
     add t q = Just $ btn (Just q) t
 
-    com1 = zuru Vertical mempty (justAfter (\q -> add "Add" q)) \{ next, prev, remove, set } -> \handle ->
-      \{ key: k, index: i, value: v } -> HH.div_
-        [ btn prev "▲"
-        , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
-        , btn next "▼"
-        , HH.text (" " <> show (i+1) <> ". ")
-        , HH.input
-          [ HP.value v, HE.onValueInput (Just <<< set) ]
-        , btn (Just remove) "-"
-        ]
+    com1 :: Array String -> MuteSimpleInput m String
+    com1 =
+      { values: _
+      , direction: Vertical
+      , default: pure mempty
+      , render:
+        { adder: justAfter (\q -> add "Add" q)
+        , item: \{ next, prev, remove, set } -> \handle ->
+          \{ key: k, index: i, value: v } -> HH.div_
+            [ btn prev "▲"
+            , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
+            , btn next "▼"
+            , HH.text (" " <> show (i+1) <> ". ")
+            , HH.input
+              [ HP.value v, HE.onValueInput (Just <<< set) ]
+            , btn (Just remove) "-"
+            ]
+        }
+      }
 
-    com2 = zuru Horizontal mempty (justAfter (add "+")) \{ next, prev, remove, set } -> \handle ->
-      \{ key: k, index: i, value: v } -> HH.div_
-        [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
-        , HH.input
-          [ HP.value v, HE.onValueInput (Just <<< set) ]
-        , btn (Just remove) "-"
-        ]
+    com2 :: Array String -> MuteSimpleInput m String
+    com2 =
+      { values: _
+      , direction: Horizontal
+      , default: pure mempty
+      , render:
+        { adder: justAfter (add "+")
+        , item: \{ next, prev, remove, set } -> \handle ->
+          \{ key: k, index: i, value: v } -> HH.div_
+            [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
+            , HH.input
+              [ HP.value v, HE.onValueInput (Just <<< set) ]
+            , btn (Just remove) "-"
+            ]
+        }
+      }
 
     update = H.put >>> (_ *> inform)
     inform = do
@@ -486,13 +605,13 @@ demo =
     lifting (Left m) = Just (Receive m unit)
     lifting (Right m) = Nothing
 
-    render :: Array String -> H.ParentHTML DemoQuery (Query Void String) Int m
+    render :: Array String -> H.ParentHTML DemoQuery (MuteRealSimpleQuery m String) Int m
     render s = HH.div_ $
-      [ HH.slot 1 com1 s lifting
-      , HH.slot 2 com2 s lifting
+      [ HH.slot 1 zuru (com1 s) lifting
+      , HH.slot 2 zuru (com2 s) lifting
       ]
 
-    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (Query Void String) Int v m
+    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (MuteRealSimpleQuery m String) Int v m
     eval (Receive (NewState v) a) = a <$ do
       H.liftEff $ log "Update"
       update v
@@ -542,46 +661,63 @@ demo2 =
     add :: forall q f p. Boolean -> RenderAdder f p m
     add b q = Just $ btn (["add", size b]) (Just q) "plus"
 
-    inner = zuru Vertical mempty (justAfter (add false))
-      \{ next, prev, remove, set } -> \handle ->
-        \{ key: k, index: i, value: v, dragged } ->
-          HH.div
-            [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
-            [ HH.div
-              [HP.class_ $ H.ClassName "actions"]
-              [ HH.a [ handle, handle_ false ] [ HH.text "■" ]
-              , btn ["swap", "small"] prev "arrow-up"
-              , btn ["swap", "small"] next "arrow-down"
-              , btn ["remove", "small"] (Just remove) "remove"
+    inner :: Array String -> MuteSimpleInput m String
+    inner =
+      { values: _
+      , direction: Vertical
+      , default: pure mempty
+      , render:
+        { adder: justAfter (add false)
+        , item: \{ next, prev, remove, set } -> \handle ->
+          \{ key: k, index: i, value: v, dragged } ->
+            HH.div
+              [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
+              [ HH.div
+                [HP.class_ $ H.ClassName "actions"]
+                [ HH.a [ handle, handle_ false ] [ HH.text "■" ]
+                , btn ["swap", "small"] prev "arrow-up"
+                , btn ["swap", "small"] next "arrow-down"
+                , btn ["remove", "small"] (Just remove) "remove"
+                ]
+              , HH.input
+                [ HP.class_ $ H.ClassName "type"
+                , HP.placeholder "Type of argument"
+                , HP.value v
+                , HE.onValueInput \v -> Just (set v)
+                ]
               ]
-            , HH.input
-              [ HP.class_ $ H.ClassName "type"
-              , HP.placeholder "Type of argument"
-              , HP.value v
-              , HE.onValueInput \v -> Just (set v)
-              ]
-            ]
+        }
+      }
 
-    outer = zuruzuru Vertical mempty (justAfter (add true))
-      \{ next, prev, remove, modify } -> \handle ->
-        \{ key: k, index: i, value: Tuple v cs, dragged } ->
-          HH.div
-            [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
-            [ HH.div
-              [HP.class_ $ H.ClassName "actions"]
-              [ HH.a [ handle, handle_ true ] [ HH.text "■" ]
-              , btn ["swap","big"] prev "arrow-left"
-              , btn ["swap","big"] next "arrow-right"
-              , btn ["remove", "big"] (Just remove) "remove"
-              ]
-            , HH.input
-              [ HP.class_ $ H.ClassName "constructor"
-              , HP.placeholder "Constructor name"
-              , HP.value v
-              , HE.onValueInput \v -> Just (modify (setl v))
-              ]
-            , HH.slot k inner cs (map modify <<< liftThru)
-            ]
+    outer :: State2D -> MuteInput (MuteRealSimpleQuery m String) Key m StateEl2D
+    outer =
+      { values: _
+      , direction: Vertical
+      , default: pure mempty
+      , render:
+        { adder: justAfter (add true)
+        , item:
+          \{ next, prev, remove, modify } -> \handle ->
+            \{ key: k, index: i, value: Tuple v cs, dragged } ->
+              HH.div
+                [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
+                [ HH.div
+                  [HP.class_ $ H.ClassName "actions"]
+                  [ HH.a [ handle, handle_ true ] [ HH.text "■" ]
+                  , btn ["swap","big"] prev "arrow-left"
+                  , btn ["swap","big"] next "arrow-right"
+                  , btn ["remove", "big"] (Just remove) "remove"
+                  ]
+                , HH.input
+                  [ HP.class_ $ H.ClassName "constructor"
+                  , HP.placeholder "Constructor name"
+                  , HP.value v
+                  , HE.onValueInput \v -> Just (modify (setl v))
+                  ]
+                , HH.slot k zuru (inner cs) (map modify <<< liftThru)
+                ]
+        }
+      }
 
     update = H.put >>> (_ *> inform)
     inform = do
@@ -600,12 +736,12 @@ demo2 =
     lifting (Left m) = Just (Tuple m unit)
     lifting (Right _) = Nothing
 
-    render :: State2D -> H.ParentHTML (Tuple (Message StateEl2D)) (Query Void StateEl2D) Unit m
+    render :: State2D -> H.ParentHTML (Tuple (Message StateEl2D)) (MuteRealQuery (MuteRealSimpleQuery m String) Key m StateEl2D) Unit m
     render s = HH.div [HP.class_ (H.ClassName "component") ] $
-      [ HH.slot unit outer s lifting
+      [ HH.slot unit zuruzuru (outer s) lifting
       ]
 
-    eval :: Tuple (Message StateEl2D) ~> H.ParentDSL State2D (Tuple (Message StateEl2D)) (Query Void StateEl2D) Unit v m
+    eval :: Tuple (Message StateEl2D) ~> H.ParentDSL State2D (Tuple (Message StateEl2D)) (MuteRealQuery (MuteRealSimpleQuery m String) Key m StateEl2D) Unit v m
     eval (Tuple (NewState v) a) = a <$ do
       H.liftEff $ log "Update"
       update v
