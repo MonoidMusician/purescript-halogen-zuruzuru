@@ -13,7 +13,7 @@ module Halogen.Zuruzuru
   , DragState
   , Keyed
   , Key
-  , SimpleHTML
+  , SimpleHTML1
   , RenderAdderWhere
   , RenderAdder
   , RenderAdderIn
@@ -244,7 +244,7 @@ type Item e =
 -- | a (horizontal) scrollbar when needed.
 data Direction = Vertical | Horizontal
 
-type SimpleHTML q m = H.ParentHTML q (Const Void) Void m
+type SimpleHTML1 q m = H.ParentHTML q (Const Void) Void m
 
 -- | `zuruzuru` minus the higher-order parent component junk.
 zuru :: forall m e o eff.
@@ -256,7 +256,7 @@ zuru :: forall m e o eff.
   RenderAdderWhere (RenderAdder (Const Void) Void m) ->
   -- | Render an item given certain queries, an `onMouseDown` property for the
   -- | draggable handle, and information about the item.
-  (forall q. Helpers o q e -> Handle q -> Item e -> SimpleHTML q m) ->
+  (forall q. Helpers o q e -> Handle q -> Item e -> SimpleHTML1 q m) ->
   H.Component HH.HTML (Query o e) (Array e) (Output o e) m
 zuru = zuruzuru
 
