@@ -2,32 +2,40 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:foo="http://www.w3.org/2000/svg">
   <head>
     <title>Zuruzuru list reordering demo</title>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css?family=Nova+Mono" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
     <style>
       body {
-        font-family: "Nova Mono", monospace;
+        font-family: monospace;
         font-size: 16px;
       }
-      .material-icons {
-        font-size: inherit;
+
+      .card {
+        position: relative;
       }
-      .btn.big > .material-icons, .handle.big > .material-icons {
-        font-size: 20px;
+
+      .actions {
+        display: inline-block;
       }
-      .btn.add.big > .material-icons, .btn.remove.big > .material-icons {
-        font-size: 22px;
-      }
+
       a.btn, a.handle {
-        color: purple;
+        color: lightgrey;
       }
-      a.btn.disabled {
-        color: gray;
-      }
-      /* Pressed buttons and dragged handles */
-      a.btn:not(.disabled):active, .dragged > .handle {
+
+      a.btn:not(.disabled):hover, .handle:hover {
         color: rgb(232, 79, 189);
+        opacity 0.5;
       }
+
+      a.btn.disabled {
+        opacity: 0.3;
+      }
+
+      /* Pressed buttons and dragged handles */
+      a.btn:not(.disabled):active, .dragged > .actions > .handle {
+        color: rgb(232, 79, 189);
+        opacity: 1.0;
+      }
+
       .handle {
         cursor: move;
         /* ugh rly */
@@ -39,29 +47,68 @@
                 user-select: none; /* Non-prefixed version, currently
                                       supported by Chrome and Opera */
       }
+
       /* I like sort of transparent input boxes that don't look terribly different */
       input {
         border: 1px solid transparent;
         font: inherit;
       }
+
       input:focus {
-        border: 1px solid purple;
         outline: none;
       }
+
       /* The numbering isn't really important to see */
       span.number {
         color: gray;
       }
+
       /* This was too close to the left for my liking */
       .number.big {
         margin-left: 4px;
       }
+
+      .horizontal {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+        display: inline-block;
+      }
+
+      .vertical {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
       /* Stolen from https://codepen.io/travisw/pen/xOvJYQ */
       .card {
         background-color: #fff;
         border-radius: 2px;
-        box-shadow: -1px 2px 4px rgba(0,0,0,.25), 1px 1px 3px rgba(0,0,0,.1);
+        border: 1px solid lightgrey;
       }
+
+      div.constructor > div.vertical {
+        margin-bottom: 21px; /* room for + button */
+      }
+
+      .card .btn.remove, .card .btn.add {
+        position: absolute;
+        right: 2px;
+        z-index: 100;
+      }
+      .card .btn.add {
+        bottom: 0;
+      }
+
+      input.constructor {
+        font-weight: 800;
+        margin-right: 17px;
+      }
+
+      div.type {
+        position: relative;
+      }
+
       /* Each item in the horizontal zuruzuru */
       .component > div > div {
         margin-left: 5px;
@@ -69,23 +116,16 @@
         margin-right: 5px;
         vertical-align: top;
       }
-      /* The components with content in the horizontal zuruzuru */
-      .constructor {
+      /* Don't let the + button become too distant */
+      .component > div > div:last-child {
+        margin-left: 1px;
       }
-      /* Each item in the vertical zuru */
-      .constructor > div > div {
-      }
-      /* The components with content in the vertical zuru */
-      .type {
-      }
-      /* Try to space the `+` over the middle of the handle */
-      .btn.add.small {
-        margin-left: 1.225em;
-      }
+
       /* The inline buttons seem to align better with this */
       .type .btn, .type .handle {
         vertical-align: middle;
       }
+
       /* This doesn't really work but YOLO */
       .btn.add.big {
         vertical-align: middle;
@@ -93,8 +133,8 @@
     </style>
   </head>
   <body>
-    <h1>A demo of Halogen Zuruzuru</h1>
-    <p>Input an ADT! Use the hamburger menu handles to reorder each part around.
+    <h1>Halogen Zuruzuru</h1>
+    <p>Input an ADT! Use the handles to reorder each part.
     <div id="app"></div>
     <script src="index.js"></script>
   </body>
