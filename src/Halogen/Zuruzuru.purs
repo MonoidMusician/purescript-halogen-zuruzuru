@@ -1,39 +1,39 @@
 module Halogen.Zuruzuru
   ( zuruzuru
   , zuru
+  , Keyed
+  , Key
   , Direction(..)
+  , Input
+  , SimpleInput
+  , MuteInput
+  , MuteSimpleInput
+  , Helpers
+  , Handle
   , ItemInfo
+  , RenderingInfoR
+  , RenderingInfo
+  , SimpleRenderingInfo
+  , MuteRenderingInfo
+  , MuteSimpleRenderingInfo
+  , RenderAdderWhere
+  , RenderAdder
+  , RenderAdderIn
+  , Message(..)
+  , Output
+  , MuteOutput
   , Query(..)
   , RealQuery
   , RealSimpleQuery
   , MuteRealQuery
   , MuteRealSimpleQuery
-  , Input
-  , SimpleInput
-  , MuteInput
-  , MuteSimpleInput
-  , Message(..)
-  , Output
-  , MuteOutput
   , State
   , StateR
   , RealState
   , RealSimpleState
   , MuteRealState
   , MuteRealSimpleState
-  , RenderAdderWhere
-  , RenderAdder
-  , RenderAdderIn
-  , RenderingInfo
-  , Helpers
-  , Handle
-  , RenderingInfoR
-  , SimpleRenderingInfo
-  , MuteRenderingInfo
-  , MuteSimpleRenderingInfo
   , DragState
-  , Keyed
-  , Key
   , NoSubOutput
   , NoSubQuery
   , NoSlot
@@ -84,16 +84,126 @@ import Halogen.VDom.Driver (runUI)
 import Partial.Unsafe (unsafePartial)
 import Unsafe.Coerce (unsafeCoerce)
 
--- | Used to fill in where a child query is expected, in "simple" components.
-type NoSubQuery = Const Void
--- | Used to fill for a child slot in simple components.
-type NoSlot = Void
-
 -- | An element with a key (string), pretty simple.
 type Keyed = Tuple Key
 
 -- | ItemInfos are kept track of with a string key, for Halogen's keyed elements.
 type Key = String
+
+-- | The direction to render the list.
+data Direction = Vertical | Horizontal
+
+-- | The input to the component. In general, parameters are named like this:
+-- |
+-- | - `g`: The type of queries of the children, or `NoSubQuery = Const Void`
+-- |    if none.
+-- | - `p`: The type of child slots, or `NoSlot = Void` if none.
+-- | - `m`: The monad this component runs in.
+-- | - `o`: Any other output passed through the component, from the rendered
+-- |    `HTML` to the output type of the zuruzuru component.
+-- | - `e`: The type of items being rendered and edited in this component.
+type Input g p m o e = RenderingInfo g p m o e ( values :: Array e )
+-- | Simple input, where there are no child slots. (Helps with ambiguous type
+-- | variables).
+type SimpleInput m o e = Input NoSubQuery NoSlot m o e
+-- | Mute input, where there is no output.
+type MuteInput g p m e = Input g p m NoSubOutput e
+-- | Mute simple input, yeah.
+type MuteSimpleInput m e = SimpleInput m NoSubOutput e
+
+-- | The (opaque) queries to perform certain actions on a particular item.
+-- |
+-- | - `remove`: Remove this item.
+-- | - `modify`: Change this item's value based on its previous value.
+-- | - `set`: Give this item a new value.
+-- | - `prev`: Swap this item with the previous one, if it is not the first.
+-- | - `next`: Swap this item with the next one, if not the last.
+-- | - `output`: Lift an output query through the component.
+type Helpers o q e =
+  { prev :: Maybe (q Unit)
+  , next :: Maybe (q Unit)
+  , modify :: (e -> e) -> q Unit
+  , remove :: q Unit
+  , set :: e -> q Unit
+  , output :: o -> q Unit
+  }
+
+-- | The property for a handler. Not in the `Helpers` record because records
+-- | hate impredicativity.
+type Handle q = forall r. H.IProp ( onMouseDown :: MouseEvent | r ) q
+
+-- | Information about an item stored in state.
+-- |
+-- | - `key`: The unique key given to this item.
+-- | - `index`: The current index of this item.
+-- | - `value`: The current value of this item.
+-- | - `dragged`: Whether this item is being dragged.
+type ItemInfo e =
+  { key :: String
+  , index :: Int
+  , value :: e
+  , dragged :: Boolean
+  }
+
+-- | All of this data is provided to the component on every updated and stored
+-- | in state, so it can be updated while the component is running.
+-- |
+-- | - `direction`: Whether the component renders vertically or horizontally.
+-- | - `default`: The default value for a new item. May be monadic.
+-- | - `render.adder`: Where and how to render buttons to add new items. See
+-- |    below.
+-- | - `render.item`: How to render an item.
+type RenderingInfoR g p m o e r =
+  ( direction :: Direction
+  , default :: m e
+  , render ::
+    { adder :: RenderAdderWhere (RenderAdder g p m)
+    , item :: forall q. Helpers o q e -> Handle q -> ItemInfo e -> H.ParentHTML q g p m
+    }
+  | r
+  )
+-- | The same thing but as a record.
+type RenderingInfo g p m o e r = Record (RenderingInfoR g p m o e r)
+-- | The record when there are no child components.
+type SimpleRenderingInfo m o e r = RenderingInfo NoSubQuery NoSlot m o e r
+-- | The record when output is nil.
+type MuteRenderingInfo g p m e r = RenderingInfo g p m NoSubOutput e r
+-- | The combination of the above.
+type MuteSimpleRenderingInfo m e r = SimpleRenderingInfo m NoSubOutput e r
+
+-- | Where and how to render an element to add an item. Set to `Nothing` to
+-- | avoid rendering something, otherwise provide a renderer with `mkJust`.
+-- | Actually best to use the prebuilt constructors that handle common cases.
+-- |
+-- | `before` means that (if there is at least one item) an adder will be
+-- | rendered before the start of the list; `between` means an adder will be
+-- | rendered between each item in the list; and `after` renders after the
+-- | whole list (which may be possibly empty).
+type RenderAdderWhere a =
+  { before :: Maybe a
+  , between :: Maybe a
+  , after :: Maybe a
+  }
+
+-- | The type of a rendering function, which does not have access to the query
+-- | type. Impredicative, be warned!
+type RenderAdder g p m = (forall q. RenderAdderIn q g p m)
+-- | The type of a rendering function when supplied with a specific query type.
+type RenderAdderIn q g p m = q Unit -> Maybe (H.ParentHTML q g p m)
+
+-- | The output message from the component.
+data Message e
+  = NewState (Array e)
+  | Preview (Array e)
+  | DragStart
+  | DragEnd
+
+-- | Either a message from the component or the out passed through the component.
+type Output o e = Either (Message e) o
+-- | Combine `Output` with `NoSubOutput`
+type MuteOutput e = Output NoSubOutput e
+-- | Another `Void` synonym, for when the rendered HTML has no output of its own.
+type NoSubOutput = Void
 
 -- | Query for the component.
 data Query i o e a
@@ -119,24 +229,17 @@ data Query i o e a
   -- | Raise an output through the component.
   | Output o a
 
+-- | Fill in the type parameter `i` in the `Query` with the actual input to the
+-- | component.
 type RealQuery g p m o e = Query (Input g p m o e) o e
 type RealSimpleQuery m o e = Query (SimpleInput m o e) o e
 type MuteRealQuery g p m e = RealQuery g p m NoSubOutput e
 type MuteRealSimpleQuery m e = RealSimpleQuery m NoSubOutput e
 
--- | The output message from the component.
-data Message e
-  = NewState (Array e)
-  | Preview (Array e)
-  | DragStart
-  | DragEnd
-
--- | Either a message from the component or the out passed through the component.
-type Output o e = Either (Message e) o
--- | Another `Void` synonym, for when the rendered HTML has no output of its own.
-type NoSubOutput = Void
--- | Combine `Output` with `NoSubOutput`
-type MuteOutput e = Output NoSubOutput e
+-- | Used to fill in where a child query is expected, in "simple" components.
+type NoSubQuery = Const Void
+-- | Used to fill for a child slot in simple components.
+type NoSlot = Void
 
 -- | Extensible *row* for the state of the component.
 type StateR e r =
@@ -151,31 +254,26 @@ type State e r = Record (StateR e r)
 type RealState g p m o e = State e (RenderingInfoR g p m o e ())
 -- | The full state for a non-parent component.
 type RealSimpleState m o e = RealState NoSubQuery NoSlot m o e
--- | The full state when there's no output.
+-- | The full state when there is no output.
 type MuteRealState g p m e = RealState g p m NoSubOutput e
 -- | The full state for a non-parent component with output just from this component.
 type MuteRealSimpleState m e = RealSimpleState m NoSubOutput e
 
 -- | State maintained while dragging. Together the numbers are used to
 -- | translate the corresponding item (using a CSS transform).
+-- |
+-- | - `key`: The key of the item being dragged.
+-- | - `offset`: The offset from its original position, whence it was dragged.
+-- | - `displacement`: The displacement of the mouse from the start of the drag.
 type DragState =
-  { -- | The key of the item being dragged
-    key :: String
-  -- | The offset from its original position, whence it was dragged
+  { key :: String
   , offset :: Number
-  -- | The displacement of the mouse from the start of the drag
   , displacement :: Number
   }
 
-type RenderAdderWhere a =
-  { before :: Maybe a
-  , between :: Maybe a
-  , after :: Maybe a
-  }
-
-type RenderAdder g p m = (forall q. RenderAdderIn q g p m)
-type RenderAdderIn q g p m = q Unit -> Maybe (H.ParentHTML q g p m)
-
+-- | Helper, this is a proof that (despite impredicativity) we can select a
+-- | particular query type for the abstracted one that we required the caller
+-- | to give.
 chooseQuery :: forall g p m q. RenderAdderWhere (RenderAdder g p m) -> RenderAdderWhere (RenderAdderIn q g p m)
 chooseQuery { before, between, after } =
   { before: before <#> \q -> q
@@ -183,9 +281,11 @@ chooseQuery { before, between, after } =
   , after: after <#> \q -> q
   }
 
+-- | Make a `Just` renderer, helps with inference.
 mkJust :: forall g p m. RenderAdder g p m -> Maybe (RenderAdder g p m)
 mkJust = Just :: RenderAdder g p m -> Maybe (RenderAdder g p m)
 
+-- | Render an adder just after the list.
 justAfter :: forall g p m. RenderAdder g p m -> RenderAdderWhere (RenderAdder g p m)
 justAfter a = { before: Nothing, between: Nothing, after: mkJust a }
 
@@ -243,59 +343,6 @@ surroundMapWithIndicesWhere { before, after, between } f as =
         let addSpacer = if i == 0 then before else between
         in foldMap (_ $ i) addSpacer <> f i a
   in notAfter <> foldMap (_ $ length as) after
-
--- | The (opaque) queries to perform certain actions on an item.
-type Helpers o q e =
-  { -- | Swap this item with the previous one, if not the first
-    prev :: Maybe (q Unit)
-  -- | Swap this item with the next one, if not the last
-  , next :: Maybe (q Unit)
-  -- | Remove this item
-  , remove :: q Unit
-  -- | Give this item a new value
-  , set :: e -> q Unit
-  -- | Modify this item's value
-  , modify :: (e -> e) -> q Unit
-  -- | Lift an output query through the component
-  , output :: o -> q Unit
-  }
-
--- | The property for a handler. No in the `Helpers` record because records
--- | hate impredicativity.
-type Handle q = forall r. H.IProp ( onMouseDown :: MouseEvent | r ) q
-
--- | Information about an item stored in state.
-type ItemInfo e =
-  { -- | The unique key given to this item
-    key :: String
-  -- | The current index of this item
-  , index :: Int
-  -- | The current value of this item
-  , value :: e
-  , dragged :: Boolean
-  }
-
--- | Whether the list is rendered vertically or horizontally. Horizontal has
--- | a (horizontal) scrollbar when needed.
-data Direction = Vertical | Horizontal
-
-type RenderingInfoR g p m o e r =
-  ( direction :: Direction
-  , default :: m e
-  , render ::
-    { adder :: RenderAdderWhere (RenderAdder g p m)
-    , item :: forall q. Helpers o q e -> Handle q -> ItemInfo e -> H.ParentHTML q g p m
-    }
-  | r
-  )
-type RenderingInfo g p m o e r = Record (RenderingInfoR g p m o e r)
-type SimpleRenderingInfo m o e r = RenderingInfo NoSubQuery NoSlot m o e r
-type MuteRenderingInfo g p m e r = RenderingInfo g p m NoSubOutput e r
-type MuteSimpleRenderingInfo m e r = SimpleRenderingInfo m NoSubOutput e r
-type Input g p m o e = RenderingInfo g p m o e ( values :: Array e )
-type SimpleInput m o e = Input NoSubQuery NoSlot m o e
-type MuteInput g p m e = Input g p m NoSubOutput e
-type MuteSimpleInput m e = SimpleInput m NoSubOutput e
 
 -- | `zuruzuru` minus the higher-order parent component junk.
 zuru :: forall m e o i eff.
