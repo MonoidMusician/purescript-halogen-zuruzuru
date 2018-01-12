@@ -23,10 +23,10 @@ module Halogen.Zuruzuru
   , Output
   , MuteOutput
   , Query(..)
-  , RealQuery
-  , RealSimpleQuery
-  , MuteRealQuery
-  , MuteRealSimpleQuery
+  , SimpleQuery
+  , MuteQuery
+  , MuteSimpleQuery
+  , QueryChildF
   , State
   , StateR
   , RealState
@@ -64,6 +64,7 @@ import DOM.Node.ParentNode (QuerySelector(..))
 import Data.Array (deleteAt, dropWhile, filter, findIndex, findLastIndex, foldMap, fromFoldable, insertAt, length, reverse, updateAt, (!!))
 import Data.Const (Const)
 import Data.Either (Either(..))
+import Data.Exists (Exists, runExists)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, use, (%=), (+=), (.=), (?=))
@@ -150,13 +151,13 @@ type ItemInfo e =
 -- |
 -- | - `direction`: Whether the component renders vertically or horizontally.
 -- | - `default`: The default value for a new item. May be monadic.
--- | - `render.adder`: Where and how to render buttons to add new items. See
+-- | - `renderers.adder`: Where and how to render buttons to add new items. See
 -- |    below.
--- | - `render.item`: How to render an item.
+-- | - `renderers.item`: How to render an item.
 type RenderingInfoR g p m o e r =
   ( direction :: Direction
   , default :: m e
-  , render ::
+  , renderers ::
     { adder :: RenderAdderWhere (RenderAdder g p m)
     , item :: forall q. Helpers o q e -> Handle q -> ItemInfo e -> H.ParentHTML q g p m
     }
@@ -206,10 +207,11 @@ type MuteOutput e = Output NoSubOutput e
 type NoSubOutput = Void
 
 -- | Query for the component.
-data Query i o e a
+data Query g p m o e a
   -- | Reset all the items in this component
   = Reset (Array e) a
-  | NewInput i a
+  -- | Receive a new input
+  | NewInput (Input g p m o e) a
   -- | Add a component at this index (between 0 and the length of the existing
   -- | elements, inclusive)
   | Add Int a
@@ -228,13 +230,15 @@ data Query i o e a
   | DragTo Int a
   -- | Raise an output through the component.
   | Output o a
+  -- | Transparently query a subcomponent
+  | QueryChild p (Exists (QueryChildF g m a))
 
--- | Fill in the type parameter `i` in the `Query` with the actual input to the
--- | component.
-type RealQuery g p m o e = Query (Input g p m o e) o e
-type RealSimpleQuery m o e = Query (SimpleInput m o e) o e
-type MuteRealQuery g p m e = RealQuery g p m NoSubOutput e
-type MuteRealSimpleQuery m e = RealSimpleQuery m NoSubOutput e
+-- | Helper for the existential query
+data QueryChildF g m a b = QueryChildF (g b) (Maybe b -> m a)
+
+type SimpleQuery = Query NoSubQuery NoSlot
+type MuteQuery g p m e = Query g p m NoSubOutput e
+type MuteSimpleQuery m e = SimpleQuery m NoSubOutput e
 
 -- | Used to fill in where a child query is expected, in "simple" components.
 type NoSubQuery = Const Void
@@ -345,9 +349,9 @@ surroundMapWithIndicesWhere { before, after, between } f as =
   in notAfter <> foldMap (_ $ length as) after
 
 -- | `zuruzuru` minus the higher-order parent component junk.
-zuru :: forall m e o i eff.
+zuru :: forall m o e eff.
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
-  H.Component HH.HTML (RealSimpleQuery m o e) (SimpleInput m o e) (Output o e) m
+  H.Component HH.HTML (SimpleQuery m o e) (SimpleInput m o e) (Output o e) m
 zuru = zuruzuru
 
 -- | Render a `zuruzuru` component! Allows a list of components to be edited
@@ -361,10 +365,10 @@ zuru = zuruzuru
 -- |   - A way of (definitely) rendering each list item, given certain queries
 -- |     (see `Helpers`), an `onMouseDown` property for the drag handle, and
 -- |     information about the item (including its position, see `ItemInfo`)
-zuruzuru :: forall g p m o e eff s.
+zuruzuru :: forall g p m o e eff.
   Ord p =>
   MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
-  H.Component HH.HTML (RealQuery g p m o e) (Input g p m o e) (Output o e) m
+  H.Component HH.HTML (Query g p m o e) (Input g p m o e) (Output o e) m
 zuruzuru =
   H.lifecycleParentComponent
     { initialState
@@ -375,8 +379,8 @@ zuruzuru =
     , finalizer: Nothing
     }
   where
-    initialState = \{ direction, default, render, values } ->
-      { direction, default, render
+    initialState = \{ direction, default, renderers, values } ->
+      { direction, default, renderers
       , values: addKeys values
       , supply: length values
       , dragging: Nothing
@@ -397,7 +401,7 @@ zuruzuru =
     topClass :: forall r i. Direction -> HH.IProp ( "class" :: String | r ) i
     topClass = HP.classes <<< map H.ClassName <<< pure <<< dirClass
 
-    dragStyleD :: forall r i. Direction -> Maybe DragState -> Key -> String
+    dragStyleD :: Direction -> Maybe DragState -> Key -> String
     dragStyleD direction dragging key = case dragging of
       Just { key: k, displacement, offset } | k == key ->
         let
@@ -414,8 +418,8 @@ zuruzuru =
       Just { key: k } | k == key -> true
       _ -> false
 
-    render :: RealState g p m o e -> H.ParentHTML (RealQuery g p m o e) g p m
-    render = \{ direction, default, render, values, dragging } ->
+    render :: RealState g p m o e -> H.ParentHTML (Query g p m o e) g p m
+    render = \{ direction, default, renderers, values, dragging } ->
       HK.div [topClass direction] $ values #
         let
           top = length values - 1
@@ -424,12 +428,12 @@ zuruzuru =
 
           adding1 addBtn i = join $ fromFoldable $ addBtn (Add i unit) <#>
             \b -> item direction ("add" <> show i) "" [] [ b ]
-          adding = mapRenderAdderWhere adding1 (chooseQuery render.adder)
+          adding = mapRenderAdderWhere adding1 (chooseQuery renderers.adder)
 
         in surroundMapWithIndicesWhere adding \i (Tuple k v) ->
           let dragged = isDragged k in
           item direction k (dragStyle dragging k) [ HP.ref (label k) ]
-            $ pure $ render.item
+            $ pure $ renderers.item
               { prev: guard (i > 0) $> Swap i (i-1) unit
               , next: guard (i < top) $> Swap i (i+1) unit
               , remove: Remove k unit
@@ -458,7 +462,7 @@ zuruzuru =
 
     notify = use _values >>= H.raise <<< Left <<< NewState <<< map extract
 
-    eval :: RealQuery g p m o e ~> H.ParentDSL (RealState g p m o e) (RealQuery g p m o e) g p (Output o e) m
+    eval :: Query g p m o e ~> H.ParentDSL (RealState g p m o e) (Query g p m o e) g p (Output o e) m
     eval (Output o next) = next <$ do
       H.raise $ Right o
     eval (Reset values next) = next <$ do
@@ -537,6 +541,9 @@ zuruzuru =
       _dragging .= Nothing
       H.raise $ Left $ DragEnd
       notify
+    eval (QueryChild slot existential) = existential # runExists
+      \(QueryChildF childQuery process) -> do
+        H.query slot childQuery >>= process >>> H.lift
 
 data DemoQuery a
   = Receive (Message String) a
@@ -565,7 +572,7 @@ demo =
       { values: _
       , direction: Vertical
       , default: pure mempty
-      , render:
+      , renderers:
         { adder: justAfter (\q -> add "Add" q)
         , item: \{ next, prev, remove, set } -> \handle ->
           \{ key: k, index: i, value: v } -> HH.div_
@@ -585,7 +592,7 @@ demo =
       { values: _
       , direction: Horizontal
       , default: pure mempty
-      , render:
+      , renderers:
         { adder: justAfter (add "+")
         , item: \{ next, prev, remove, set } -> \handle ->
           \{ key: k, index: i, value: v } -> HH.div_
@@ -605,13 +612,13 @@ demo =
     lifting (Left m) = Just (Receive m unit)
     lifting (Right m) = Nothing
 
-    render :: Array String -> H.ParentHTML DemoQuery (MuteRealSimpleQuery m String) Int m
+    render :: Array String -> H.ParentHTML DemoQuery (MuteSimpleQuery m String) Int m
     render s = HH.div_ $
       [ HH.slot 1 zuru (com1 s) lifting
       , HH.slot 2 zuru (com2 s) lifting
       ]
 
-    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (MuteRealSimpleQuery m String) Int v m
+    eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (MuteSimpleQuery m String) Int v m
     eval (Receive (NewState v) a) = a <$ do
       H.liftEff $ log "Update"
       update v
@@ -658,7 +665,7 @@ demo2 =
     icon :: forall q f p. String -> H.ParentHTML q f p m
     icon c = HH.i [ cl ["fa", "fa-"<> c ] ] [ ]
 
-    add :: forall q f p. Boolean -> RenderAdder f p m
+    add :: forall f p. Boolean -> RenderAdder f p m
     add b q = Just $ btn (["add", size b]) (Just q) "plus"
 
     inner :: Array String -> MuteSimpleInput m String
@@ -666,7 +673,7 @@ demo2 =
       { values: _
       , direction: Vertical
       , default: pure mempty
-      , render:
+      , renderers:
         { adder: justAfter (add false)
         , item: \{ next, prev, remove, set } -> \handle ->
           \{ key: k, index: i, value: v, dragged } ->
@@ -683,18 +690,18 @@ demo2 =
                 [ HP.class_ $ H.ClassName "type"
                 , HP.placeholder "Type of argument"
                 , HP.value v
-                , HE.onValueInput \v -> Just (set v)
+                , HE.onValueInput \v' -> Just (set v')
                 ]
               ]
         }
       }
 
-    outer :: State2D -> MuteInput (MuteRealSimpleQuery m String) Key m StateEl2D
+    outer :: State2D -> MuteInput (MuteSimpleQuery m String) Key m StateEl2D
     outer =
       { values: _
       , direction: Vertical
       , default: pure mempty
-      , render:
+      , renderers:
         { adder: justAfter (add true)
         , item:
           \{ next, prev, remove, modify } -> \handle ->
@@ -712,7 +719,7 @@ demo2 =
                   [ HP.class_ $ H.ClassName "constructor"
                   , HP.placeholder "Constructor name"
                   , HP.value v
-                  , HE.onValueInput \v -> Just (modify (setl v))
+                  , HE.onValueInput \v' -> Just (modify (setl v'))
                   ]
                 , HH.slot k zuru (inner cs) (map modify <<< liftThru)
                 ]
@@ -736,12 +743,12 @@ demo2 =
     lifting (Left m) = Just (Tuple m unit)
     lifting (Right _) = Nothing
 
-    render :: State2D -> H.ParentHTML (Tuple (Message StateEl2D)) (MuteRealQuery (MuteRealSimpleQuery m String) Key m StateEl2D) Unit m
+    render :: State2D -> H.ParentHTML (Tuple (Message StateEl2D)) (MuteQuery (MuteSimpleQuery m String) Key m StateEl2D) Unit m
     render s = HH.div [HP.class_ (H.ClassName "component") ] $
       [ HH.slot unit zuruzuru (outer s) lifting
       ]
 
-    eval :: Tuple (Message StateEl2D) ~> H.ParentDSL State2D (Tuple (Message StateEl2D)) (MuteRealQuery (MuteRealSimpleQuery m String) Key m StateEl2D) Unit v m
+    eval :: Tuple (Message StateEl2D) ~> H.ParentDSL State2D (Tuple (Message StateEl2D)) (MuteQuery (MuteSimpleQuery m String) Key m StateEl2D) Unit v m
     eval (Tuple (NewState v) a) = a <$ do
       H.liftEff $ log "Update"
       update v
