@@ -49,18 +49,14 @@ import Prelude
 
 import Control.Comonad (extract)
 import Control.Extend (extend)
-import Control.Monad.Aff.Class (class MonadAff)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.AVar (AVAR)
-import Control.Monad.Eff.Console (CONSOLE, log, logShow)
-import Control.Monad.Eff.Exception (EXCEPTION)
-import Control.Monad.Eff.Ref (REF)
+import Effect.Aff.Class (class MonadAff)
+import Effect (Effect)
+import Effect.Console (log, logShow)
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.MonadZero (guard)
-import DOM (DOM)
-import DOM.Event.Types (MouseEvent)
-import DOM.HTML.HTMLElement (getBoundingClientRect)
-import DOM.Node.ParentNode (QuerySelector(..))
+import Web.UIEvent.MouseEvent (MouseEvent)
+import Web.HTML.HTMLElement (getBoundingClientRect)
+import Web.DOM.ParentNode (QuerySelector(..))
 import Data.Array (deleteAt, dropWhile, filter, findIndex, findLastIndex, foldMap, fromFoldable, insertAt, length, reverse, updateAt, (!!))
 import Data.Const (Const)
 import Data.Either (Either(..))
@@ -70,7 +66,6 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, use, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
-import Data.Monoid (class Monoid, mempty)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
@@ -349,8 +344,8 @@ surroundMapWithIndicesWhere { before, after, between } f as =
   in notAfter <> foldMap (_ $ length as) after
 
 -- | `zuruzuru` minus the higher-order parent component junk.
-zuru :: forall m o e eff.
-  MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+zuru :: forall m o e.
+  MonadAff m =>
   H.Component HH.HTML (SimpleQuery m o e) (SimpleInput m o e) (Output o e) m
 zuru = zuruzuru
 
@@ -365,9 +360,9 @@ zuru = zuruzuru
 -- |   - A way of (definitely) rendering each list item, given certain queries
 -- |     (see `Helpers`), an `onMouseDown` property for the drag handle, and
 -- |     information about the item (including its position, see `ItemInfo`)
-zuruzuru :: forall g p m o e eff.
+zuruzuru :: forall g p m o e.
   Ord p =>
-  MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+  MonadAff m =>
   H.Component HH.HTML (Query g p m o e) (Input g p m o e) (Output o e) m
 zuruzuru =
   H.lifecycleParentComponent
@@ -452,7 +447,7 @@ zuruzuru =
     -- getPos :: Key -> MaybeT (H.ComponentDSL (State e) (Query o e) (Output o e) m) Number
     getPos k = do
       e <- MaybeT $ H.getRef (label k)
-      mid =<< H.liftEff (getBoundingClientRect (unsafeCoerce e))
+      mid =<< H.liftEffect (getBoundingClientRect (unsafeCoerce e))
 
     -- getPoses :: H.ComponentDSL (State e) (Query o e) (Output o e) m (Array (Maybe Number))
     getPoses =
@@ -466,8 +461,8 @@ zuruzuru =
     eval (Output o next) = next <$ do
       H.raise $ Right o
     eval (Reset values next) = next <$ do
-      H.liftEff $ log "Reset"
-      H.modify _ { values = addKeys values, supply = length values }
+      H.liftEffect $ log "Reset"
+      H.modify_ _ { values = addKeys values, supply = length values }
     eval (NewInput values next) = next <$ do
       H.put (initialState values)
     eval (Update k f next) = next <$ do
@@ -476,7 +471,7 @@ zuruzuru =
     eval (Add i next) = next <$ do
       sup <- H.gets _.supply
       let k = show sup
-      H.modify _ { supply = sup + 1 }
+      H.modify_ _ { supply = sup + 1 }
       v <- H.lift =<< H.gets _.default
       _values %= (fromMaybe <*> insertAt i (Tuple k v))
       notify
@@ -500,9 +495,9 @@ zuruzuru =
         i <- findIndex (fst >>> eq k) values
         v <- values !! i
         deleteAt i values >>= insertAt i' v
-      H.modify _ { values = values' }
+      H.modify_ _ { values = values' }
       newPos <- getPos k
-      H.liftEff $ log $ "dragTo offset: " <> show (newPos - oldPos)
+      H.liftEffect $ log $ "dragTo offset: " <> show (newPos - oldPos)
       _offset += (newPos - oldPos)
       H.lift $ H.raise $ Left $ Preview (extract <$> values')
     eval (Dragging k e next) = next <$ runMaybeT do
@@ -515,7 +510,7 @@ zuruzuru =
         mouseMovement = case direction of
           Horizontal -> d.offsetX
           Vertical -> d.offsetY
-      H.liftEff $ logShow mouseMovement
+      H.liftEffect $ logShow mouseMovement
       _dragging %= map _ { displacement = mouseMovement }
       poses <- getPoses
       runMaybeT do
@@ -537,7 +532,7 @@ zuruzuru =
         guard (i /= i') -- redundant, but just to be safe
         H.lift $ eval (DragTo i' unit)
     eval (Move (Drag.Done e) next) = next <$ do
-      H.liftEff $ log "End"
+      H.liftEffect $ log "End"
       _dragging .= Nothing
       H.raise $ Left $ DragEnd
       notify
@@ -548,8 +543,8 @@ zuruzuru =
 data DemoQuery a
   = Receive (Message String) a
 
-demo :: forall u v m eff.
-  MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+demo :: forall u v m.
+  MonadAff m =>
   H.Component HH.HTML DemoQuery u v m
 demo =
   H.lifecycleParentComponent
@@ -607,7 +602,7 @@ demo =
     update = H.put >>> (_ *> inform)
     inform = do
       r <- H.get
-      H.liftEff $ logShow r
+      H.liftEffect $ logShow r
 
     lifting (Left m) = Just (Receive m unit)
     lifting (Right m) = Nothing
@@ -620,15 +615,15 @@ demo =
 
     eval :: DemoQuery ~> H.ParentDSL (Array String) DemoQuery (MuteSimpleQuery m String) Int v m
     eval (Receive (NewState v) a) = a <$ do
-      H.liftEff $ log "Update"
+      H.liftEffect $ log "Update"
       update v
     eval (Receive _ a) = pure a
 
 type StateEl2D = Tuple String (Array String)
 type State2D = Array StateEl2D
 
-demo2 :: forall u v m eff.
-  MonadAff ( dom :: DOM, console :: CONSOLE, avar :: AVAR, ref :: REF | eff ) m =>
+demo2 :: forall u v m.
+  MonadAff m =>
   H.Component HH.HTML (Tuple (Message StateEl2D)) u v m
 demo2 =
   H.lifecycleParentComponent
@@ -729,7 +724,7 @@ demo2 =
     update = H.put >>> (_ *> inform)
     inform = do
       r <- H.get
-      H.liftEff $ logShow r
+      H.liftEffect $ logShow r
 
     setl a (Tuple _ b) = Tuple a b
     setr b (Tuple a _) = Tuple a b
@@ -750,12 +745,12 @@ demo2 =
 
     eval :: Tuple (Message StateEl2D) ~> H.ParentDSL State2D (Tuple (Message StateEl2D)) (MuteQuery (MuteSimpleQuery m String) Key m StateEl2D) Unit v m
     eval (Tuple (NewState v) a) = a <$ do
-      H.liftEff $ log "Update"
+      H.liftEffect $ log "Update"
       update v
     eval (Tuple _ a) = pure a
 
 -- | Demo app.
-main :: forall e. Eff ( avar :: AVAR, ref :: REF, exception :: EXCEPTION, dom :: DOM, console :: CONSOLE | e ) Unit
+main :: Effect Unit
 main = runHalogenAff $ unsafePartial do
   awaitLoad
   Just e <- selectElement (QuerySelector "#app")

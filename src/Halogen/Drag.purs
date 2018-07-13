@@ -15,26 +15,24 @@ module Halogen.Component.Utils.Drag
   ( dragEventSource
   , DragData
   , DragEvent(..)
-  , DragEffects
   , PageCoord
   , mouseEventToPageCoord
   ) where
 
 import Prelude
 
-import Control.Monad.Aff.AVar (AVAR)
-import Control.Monad.Aff.Class (class MonadAff)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Ref (REF, newRef, readRef, writeRef)
+import Effect.Aff.Class (class MonadAff)
+import Effect (Effect)
+import Effect.Ref (new, read, write) as Ref
 
 import Data.Maybe (Maybe)
 
-import DOM (DOM)
-import DOM.Event.EventTarget (EventListener, eventListener, addEventListener, removeEventListener)
-import DOM.Event.Types (Event, MouseEvent)
-import DOM.HTML (window)
-import DOM.HTML.Event.EventTypes (mousemove, mouseup)
-import DOM.HTML.Types (windowToEventTarget)
+import Web.Event.EventTarget (eventListener, addEventListener, removeEventListener)
+import Web.Event.Event (Event)
+import Web.UIEvent.MouseEvent (MouseEvent)
+import Web.HTML (window)
+import Web.UIEvent.MouseEvent.EventTypes (mousemove, mouseup)
+import Web.HTML.Window (toEventTarget) as Window
 
 import Halogen.Query.EventSource as ES
 
@@ -53,61 +51,55 @@ data DragEvent
   = Move MouseEvent DragData
   | Done MouseEvent
 
-type DragEffects eff =
-  ( dom ∷ DOM
-  , ref ∷ REF
-  , avar ∷ AVAR
-  | eff
-  )
-
 type PageCoord =
   { pageX ∷ Number
   , pageY ∷ Number
   }
 
 dragEventSource
-  ∷ ∀ f m eff
-  . MonadAff (DragEffects eff) m
+  ∷ ∀ f m
+  . MonadAff m
   ⇒ MouseEvent
   → (DragEvent → Maybe (f ES.SubscribeStatus))
   → ES.EventSource f m
 dragEventSource mouseEvent = ES.eventSource' \emit → do
   let initEv = mouseEventToPageCoord mouseEvent
-  eventRef ← newRef initEv
+  eventRef ← Ref.new initEv
+  remover ← Ref.new (pure unit :: Effect Unit)
+
+  mouseMove <- eventListener \ev → do
+    prevEv ← Ref.read eventRef
+    let
+      ev' = unsafeEventToPageCoord ev
+      x1 = prevEv.pageX
+      y1 = prevEv.pageY
+      x2 = ev'.pageX
+      y2 = ev'.pageY
+      dragData =
+        { x: x2
+        , y: y2
+        , deltaX: x2 - x1
+        , deltaY: y2 - y1
+        , offsetX: x2 - initEv.pageX
+        , offsetY: y2 - initEv.pageY
+        }
+    Ref.write ev' eventRef
+    emit $ Move (unsafeEventToMouseEvent ev) dragData
+
+  mouseUp <- eventListener \ev → do
+    join $ Ref.read remover
+    emit $ Done (unsafeEventToMouseEvent ev)
 
   let
-    removeListeners ∷ Eff (DragEffects eff) Unit
+    removeListeners ∷ Effect Unit
     removeListeners = do
-      win ← windowToEventTarget <$> window
+      win ← Window.toEventTarget <$> window
       removeEventListener mousemove mouseMove false win
       removeEventListener mouseup mouseUp false win
 
-    mouseMove ∷ EventListener (DragEffects eff)
-    mouseMove = eventListener \ev → do
-      prevEv ← readRef eventRef
-      let
-        ev' = unsafeEventToPageCoord ev
-        x1 = prevEv.pageX
-        y1 = prevEv.pageY
-        x2 = ev'.pageX
-        y2 = ev'.pageY
-        dragData =
-          { x: x2
-          , y: y2
-          , deltaX: x2 - x1
-          , deltaY: y2 - y1
-          , offsetX: x2 - initEv.pageX
-          , offsetY: y2 - initEv.pageY
-          }
-      writeRef eventRef ev'
-      emit $ Move (unsafeEventToMouseEvent ev) dragData
+  Ref.write removeListeners remover
 
-    mouseUp ∷ EventListener (DragEffects eff)
-    mouseUp = eventListener \ev → do
-      removeListeners
-      emit $ Done (unsafeEventToMouseEvent ev)
-
-  win ← windowToEventTarget <$> window
+  win ← Window.toEventTarget <$> window
   addEventListener mousemove mouseMove false win
   addEventListener mouseup mouseUp false win
   pure removeListeners
