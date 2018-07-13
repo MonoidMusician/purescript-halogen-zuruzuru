@@ -63,13 +63,15 @@ import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, use, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
+import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
-import Data.Symbol (SProxy(..))
+import Data.Symbol (class IsSymbol, SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Halogen as H
 import Halogen.Aff (awaitLoad, runHalogenAff, selectElement)
 import Halogen.Component.Utils.Drag as Drag
+import Halogen.Data.Slot as Slot
 import Halogen.HTML as HH
 import Halogen.HTML.Elements.Keyed as HK
 import Halogen.HTML.Events as HE
@@ -78,6 +80,7 @@ import Halogen.VDom.Driver (runUI)
 import Halogen.Query.ChildQuery as CQ
 import Halogen.Query.HalogenM as HM
 import Partial.Unsafe (unsafePartial)
+import Prim.Row as Row
 import Unsafe.Coerce (unsafeCoerce)
 
 -- | An element with a key (string), pretty simple.
@@ -538,8 +541,30 @@ zuruzuru =
       notify
     eval (QueryChild cqbox) = HM.HalogenM $ liftF $ HM.ChildQuery cqbox
 
-data DemoQuery a
-  = Receive (Message String) a
+queryInside
+  :: forall sym f o' p px ps m o e a
+   . Row.Cons sym (Slot.Slot f o' p) px ps
+  => IsSymbol sym
+  => Ord p
+  => SProxy sym
+  -> p
+  -> f a
+  -> Query ps m o e (Maybe a)
+queryInside sym p q = QueryChild $ CQ.mkChildQueryBox $
+  CQ.ChildQuery (\k -> traverse k <<< Slot.lookup sym p) q identity
+
+queryAllInside
+  :: forall sym f o' p px ps m o e a
+   . Row.Cons sym (Slot.Slot f o' p) px ps
+  => IsSymbol sym
+  => Ord p
+  => SProxy sym
+  -> f a
+  -> Query ps m o e (Map p a)
+queryAllInside sym q = QueryChild $ CQ.mkChildQueryBox $
+  CQ.ChildQuery (\k -> traverse k <<< Slot.slots sym) q identity
+
+data DemoQuery a = Receive (Message String) a
 
 type ZZSlot m = ( zuruzuru :: MuteSimpleSlot m String Int )
 
