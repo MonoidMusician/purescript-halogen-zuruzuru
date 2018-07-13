@@ -8,7 +8,7 @@
   ],
   "dependencies": {
     "purescript-prelude": "^4.0.0",
-    "purescript-halogen": "^4.0.0"
+    "purescript-halogen": "master"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0"

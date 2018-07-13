@@ -25,7 +25,7 @@ import Effect.Aff.Class (class MonadAff)
 import Effect (Effect)
 import Effect.Ref (new, read, write) as Ref
 
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe, maybe)
 
 import Web.Event.EventTarget (eventListener, addEventListener, removeEventListener)
 import Web.Event.Event (Event)
@@ -57,12 +57,13 @@ type PageCoord =
   }
 
 dragEventSource
-  ∷ ∀ f m
+  ∷ ∀ m a
   . MonadAff m
   ⇒ MouseEvent
-  → (DragEvent → Maybe (f ES.SubscribeStatus))
-  → ES.EventSource f m
-dragEventSource mouseEvent = ES.eventSource' \emit → do
+  → (DragEvent → Maybe a)
+  → ES.EventSource m a
+dragEventSource mouseEvent f = ES.effectEventSource \emitter → do
+  let emittance = maybe (pure unit) (ES.emit emitter <<< pure) <<< f
   let initEv = mouseEventToPageCoord mouseEvent
   eventRef ← Ref.new initEv
   remover ← Ref.new (pure unit :: Effect Unit)
@@ -84,11 +85,11 @@ dragEventSource mouseEvent = ES.eventSource' \emit → do
         , offsetY: y2 - initEv.pageY
         }
     Ref.write ev' eventRef
-    emit $ Move (unsafeEventToMouseEvent ev) dragData
+    emittance $ Move (unsafeEventToMouseEvent ev) dragData
 
   mouseUp <- eventListener \ev → do
     join $ Ref.read remover
-    emit $ Done (unsafeEventToMouseEvent ev)
+    emittance $ Done (unsafeEventToMouseEvent ev)
 
   let
     removeListeners ∷ Effect Unit
@@ -102,7 +103,7 @@ dragEventSource mouseEvent = ES.eventSource' \emit → do
   win ← Window.toEventTarget <$> window
   addEventListener mousemove mouseMove false win
   addEventListener mouseup mouseUp false win
-  pure removeListeners
+  pure $ ES.Finalizer removeListeners
 
 unsafeEventToPageCoord ∷ Event → PageCoord
 unsafeEventToPageCoord = unsafeCoerce
