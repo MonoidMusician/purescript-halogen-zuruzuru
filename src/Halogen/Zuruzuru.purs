@@ -26,7 +26,10 @@ module Halogen.Zuruzuru
   , SimpleQuery
   , MuteQuery
   , MuteSimpleQuery
-  -- , QueryChildF
+  , Slot
+  , SimpleSlot
+  , MuteSlot
+  , MuteSimpleSlot
   , State
   , StateR
   , RealState
@@ -36,11 +39,13 @@ module Halogen.Zuruzuru
   , DragState
   , NoSubOutput
   , NoSlots
+  , queryInside
+  , queryAllInside
   , everywhere
   , justAfter
   , justBefore
   , inside
-  , main
+  , _zuruzuru
   ) where
 
 
@@ -49,37 +54,32 @@ import Prelude
 import Control.Comonad (extract)
 import Control.Extend (extend)
 import Effect.Aff.Class (class MonadAff)
-import Effect (Effect)
 import Effect.Console (log, logShow)
 import Control.Monad.Free (liftF)
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.MonadZero (guard)
 import Web.UIEvent.MouseEvent (MouseEvent)
 import Web.HTML.HTMLElement (getBoundingClientRect)
-import Web.DOM.ParentNode (QuerySelector(..))
-import Data.Array (deleteAt, dropWhile, filter, findIndex, findLastIndex, foldMap, fromFoldable, insertAt, length, reverse, updateAt, (!!))
+import Data.Array (deleteAt, filter, findIndex, findLastIndex, foldMap, fromFoldable, insertAt, length, updateAt, (!!))
 import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, use, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Symbol (class IsSymbol, SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
 import Halogen as H
-import Halogen.Aff (awaitLoad, runHalogenAff, selectElement)
 import Halogen.Component.Utils.Drag as Drag
 import Halogen.Data.Slot as Slot
 import Halogen.HTML as HH
 import Halogen.HTML.Elements.Keyed as HK
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
-import Halogen.VDom.Driver (runUI)
 import Halogen.Query.ChildQuery as CQ
 import Halogen.Query.HalogenM as HM
-import Partial.Unsafe (unsafePartial)
 import Prim.Row as Row
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -563,223 +563,3 @@ queryAllInside
   -> Query ps m o e (Map p a)
 queryAllInside sym q = QueryChild $ CQ.mkChildQueryBox $
   CQ.ChildQuery (\k -> traverse k <<< Slot.slots sym) q identity
-
-data DemoQuery a = Receive (Message String) a
-
-type ZZSlot m = ( zuruzuru :: MuteSimpleSlot m String Int )
-
-demo :: forall u v m.
-  MonadAff m =>
-  H.Component HH.HTML DemoQuery u v m
-demo =
-  H.component
-    { initialState: const ["","",""]
-    , render
-    , eval
-    , receiver: const Nothing
-    , initializer: Nothing
-    , finalizer: Nothing
-    }
-  where
-    btn :: forall q ps. Maybe (q Unit) -> String -> H.ComponentHTML q ps m
-    btn q t = HH.button [ HE.onClick (pure q), HP.disabled (isNothing q) ] [ HH.text t ]
-
-    add :: forall ps. String -> RenderAdder ps m
-    add t q = Just $ btn (Just q) t
-
-    com1 :: Array String -> MuteSimpleInput m String
-    com1 =
-      { values: _
-      , direction: Vertical
-      , default: pure mempty
-      , renderers:
-        { adder: justAfter (\q -> add "Add" q)
-        , item: \{ next, prev, remove, set } -> \handle ->
-          \{ key: k, index: i, value: v } -> HH.div_
-            [ btn prev "▲"
-            , HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
-            , btn next "▼"
-            , HH.text (" " <> show (i+1) <> ". ")
-            , HH.input
-              [ HP.value v, HE.onValueInput (Just <<< set) ]
-            , btn (Just remove) "-"
-            ]
-        }
-      }
-
-    com2 :: Array String -> MuteSimpleInput m String
-    com2 =
-      { values: _
-      , direction: Horizontal
-      , default: pure mempty
-      , renderers:
-        { adder: justAfter (add "+")
-        , item: \{ next, prev, remove, set } -> \handle ->
-          \{ key: k, index: i, value: v } -> HH.div_
-            [ HH.button [ handle, HP.attr (H.AttrName "style") "pointer: move" ] [ HH.text "≡" ]
-            , HH.input
-              [ HP.value v, HE.onValueInput (Just <<< set) ]
-            , btn (Just remove) "-"
-            ]
-        }
-      }
-
-    update = H.put >>> (_ *> inform)
-    inform = do
-      r <- H.get
-      H.liftEffect $ logShow r
-
-    lifting (Left m) = Just (Receive m unit)
-    lifting (Right m) = Nothing
-
-    render :: Array String -> H.ComponentHTML DemoQuery (ZZSlot m) m
-    render s = HH.div_ $
-      [ HH.slot _zuruzuru 1 zuru (com1 s) lifting
-      , HH.slot _zuruzuru 2 zuru (com2 s) lifting
-      ]
-
-    eval :: DemoQuery ~> H.HalogenM (Array String) DemoQuery (ZZSlot m) v m
-    eval (Receive (NewState v) a) = a <$ do
-      H.liftEffect $ log "Update"
-      update v
-    eval (Receive _ a) = pure a
-
-type StateEl2D = Tuple String (Array String)
-type State2D = Array StateEl2D
-
-type ZZSlot3 m = ( zuruzuru2 :: MuteSimpleSlot m String Key )
-type ZZSlot2 m = ( zuruzuru :: MuteSlot (ZZSlot3 m) m StateEl2D Unit )
-
-demo2 :: forall u v m.
-  MonadAff m =>
-  H.Component HH.HTML (Tuple (Message StateEl2D)) u v m
-demo2 =
-  H.component
-    { initialState: const
-      [ Tuple "This" ["a"]
-      , Tuple "That" ["b"]
-      , Tuple "These" ["a", "b"]
-      ]
-    , render
-    , eval
-    , receiver: const Nothing
-    , initializer: Nothing
-    , finalizer: Nothing
-    }
-  where
-    cl :: forall r i.  Array String -> HH.IProp ( "class" :: String | r ) i
-    cl s = HP.classes $ map H.ClassName s
-
-    but :: forall r i. Array String -> Boolean -> HH.IProp ( "class" :: String | r ) i
-    but c dis = HP.classes $ map H.ClassName $
-      ([ "btn"] <> c) <> (guard dis $> "disabled")
-
-    handle_ :: forall r i. Boolean -> HH.IProp ( "class" :: String | r ) i
-    handle_ b = HP.classes $ map H.ClassName $ [ "handle", size b ]
-
-    size = if _ then "big" else "small"
-    whenDragged = if _ then " dragged" else ""
-
-    btn :: forall q ps. Array String -> Maybe (q Unit) -> String -> H.ComponentHTML q ps m
-    btn c q t = HH.a
-      [ but c (isNothing q), HE.onClick (pure q) ]
-      [ icon t ]
-
-    icon :: forall q ps. String -> H.ComponentHTML q ps m
-    icon c = HH.i [ cl ["fa", "fa-"<> c ] ] [ ]
-
-    add :: forall ps. Boolean -> RenderAdder ps m
-    add b q = Just $ btn (["add", size b]) (Just q) "plus"
-
-    inner :: Array String -> MuteSimpleInput m String
-    inner =
-      { values: _
-      , direction: Vertical
-      , default: pure mempty
-      , renderers:
-        { adder: justAfter (add false)
-        , item: \{ next, prev, remove, set } -> \handle ->
-          \{ key: k, index: i, value: v, dragged } ->
-            HH.div
-              [ HP.class_ (H.ClassName $ "type" <> whenDragged dragged) ]
-              [ HH.div
-                [HP.class_ $ H.ClassName "actions"]
-                [ HH.a [ handle, handle_ false ] [ HH.text "■" ]
-                , btn ["swap", "small"] prev "arrow-up"
-                , btn ["swap", "small"] next "arrow-down"
-                , btn ["remove", "small"] (Just remove) "remove"
-                ]
-              , HH.input
-                [ HP.class_ $ H.ClassName "type"
-                , HP.placeholder "Type of argument"
-                , HP.value v
-                , HE.onValueInput \v' -> Just (set v')
-                ]
-              ]
-        }
-      }
-
-    outer :: State2D -> MuteInput (ZZSlot3 m) m StateEl2D
-    outer =
-      { values: _
-      , direction: Vertical
-      , default: pure mempty
-      , renderers:
-        { adder: justAfter (add true)
-        , item:
-          \{ next, prev, remove, modify } -> \handle ->
-            \{ key: k, index: i, value: Tuple v cs, dragged } ->
-              HH.div
-                [ HP.class_ (H.ClassName $ "card constructor" <> whenDragged dragged) ]
-                [ HH.div
-                  [HP.class_ $ H.ClassName "actions"]
-                  [ HH.a [ handle, handle_ true ] [ HH.text "■" ]
-                  , btn ["swap","big"] prev "arrow-left"
-                  , btn ["swap","big"] next "arrow-right"
-                  , btn ["remove", "big"] (Just remove) "remove"
-                  ]
-                , HH.input
-                  [ HP.class_ $ H.ClassName "constructor"
-                  , HP.placeholder "Constructor name"
-                  , HP.value v
-                  , HE.onValueInput \v' -> Just (modify (setl v'))
-                  ]
-                , HH.slot (SProxy :: SProxy "zuruzuru2") k zuru (inner cs) (map modify <<< liftThru)
-                ]
-        }
-      }
-
-    update = H.put >>> (_ *> inform)
-    inform = do
-      r <- H.get
-      H.liftEffect $ logShow r
-
-    setl a (Tuple _ b) = Tuple a b
-    setr b (Tuple a _) = Tuple a b
-
-    addEmpty :: Array String -> Array String
-    addEmpty = (_ <> [""]) <<< reverse <<< dropWhile (eq "") <<< reverse
-
-    liftThru (Left (NewState cs)) = Just $ setr cs
-    liftThru _ = Nothing
-
-    lifting (Left m) = Just (Tuple m unit)
-    lifting (Right _) = Nothing
-
-    render :: State2D -> H.ComponentHTML (Tuple (Message StateEl2D)) (ZZSlot2 m) m
-    render s = HH.div [HP.class_ (H.ClassName "component") ] $
-      [ HH.slot _zuruzuru unit zuruzuru (outer s) lifting
-      ]
-
-    eval :: Tuple (Message StateEl2D) ~> H.HalogenM State2D (Tuple (Message StateEl2D)) (ZZSlot2 m) v m
-    eval (Tuple (NewState v) a) = a <$ do
-      H.liftEffect $ log "Update"
-      update v
-    eval (Tuple _ a) = pure a
-
--- | Demo app.
-main :: Effect Unit
-main = runHalogenAff $ unsafePartial do
-  awaitLoad
-  Just e <- selectElement (QuerySelector "#app")
-  runUI demo2 unit e

@@ -8,5 +8,5 @@ Don't ask me! [ずるずる](https://en.wiktionary.org/wiki/%E3%81%9A%E3%82%8B%E
 https://monoidmusician.github.io/purescript-halogen-zuruzuru/index.html
 
 # Build Demo
-```pulp browserify -m Halogen.Zuruzuru --to docs/index.js```
+```pulp browserify -m Halogen.Zuruzuru.Demo2D --include test/ --to docs/index.js```
 (or add `-w` for more fun!)
