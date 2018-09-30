@@ -257,6 +257,7 @@ type RenderAdderIn q ps m = q Unit -> Maybe (H.ComponentHTML q ps m)
 data Message e
   = NewState (Array e)
   | Preview (Array e)
+  | Added { key :: String, index :: Int, value :: e }
   | DragStart
   | DragEnd
 
@@ -634,6 +635,7 @@ eval (Add i next) = next <$ do
   v <- H.lift =<< H.gets _.default
   _values %= (fromMaybe <*> insertAt i (Tuple k v))
   notify
+  H.raise $ Left $ Added { key: "item" <> k, index: i, value: v }
 eval (Remove k next) = next <$ do
   _values %= filter (fst >>> notEq k)
   notify
