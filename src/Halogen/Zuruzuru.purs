@@ -738,24 +738,24 @@ transHalogenQ t = case _ of
   H.Request fa -> H.Request (t fa)
 
 queryInside
-  :: forall sym f o' p px ps m o e a
+  :: forall sym f i o' p px ps o e a
    . Row.Cons sym (Slot.Slot f o' p) px ps
   => IsSymbol sym
   => Ord p
   => SProxy sym
   -> p
   -> f a
-  -> Query ps m o e (Maybe a)
+  -> QueryI i ps o e (Maybe a)
 queryInside sym p q = QueryChild $ CQ.mkChildQueryBox $
   CQ.ChildQuery (\k -> traverse k <<< Slot.lookup sym p) q identity
 
 queryAllInside
-  :: forall sym f o' p px ps m o e a
+  :: forall sym f i o' p px ps o e a
    . Row.Cons sym (Slot.Slot f o' p) px ps
   => IsSymbol sym
   => Ord p
   => SProxy sym
   -> f a
-  -> Query ps m o e (Map p a)
+  -> QueryI i ps o e (Map p a)
 queryAllInside sym q = QueryChild $ CQ.mkChildQueryBox $
   CQ.ChildQuery (\k -> traverse k <<< Slot.slots sym) q identity
