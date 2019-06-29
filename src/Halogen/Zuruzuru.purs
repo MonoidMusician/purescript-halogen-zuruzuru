@@ -82,12 +82,14 @@ import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Monad.State (class MonadState)
 import Control.MonadZero (class Plus, empty, guard)
 import Data.Array (deleteAt, filter, findIndex, findLastIndex, foldMap, fromFoldable, insertAt, length, updateAt, (!!))
+import Data.Coyoneda (hoistCoyoneda, lowerCoyoneda)
 import Data.Either (Either(..))
-import Data.FoldableWithIndex (foldMapWithIndex)
+import Data.FoldableWithIndex (foldMapWithIndex, foldrWithIndex)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Lens (Lens', Traversal', _Just, preview, use, (%=), (+=), (.=), (?=))
 import Data.Lens.Record (prop)
 import Data.Map (Map)
+import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Profunctor (dimap)
@@ -151,21 +153,21 @@ type MuteSimpleInput' m e = SimpleInput' m NoSubOutput e
 -- | - `next`: Swap this item with the next one, if not the last.
 -- | - `output`: Lift an output query through the component.
 type Helpers o q e =
-  { prev :: Maybe (q Unit)
-  , next :: Maybe (q Unit)
-  , modify :: (e -> e) -> q Unit
-  , remove :: q Unit
-  , set :: e -> q Unit
-  , output :: o -> q Unit
+  { prev :: Maybe q
+  , next :: Maybe q
+  , modify :: (e -> e) -> q
+  , remove :: q
+  , set :: e -> q
+  , output :: o -> q
   }
 
 -- | The property for a handler. Not in the `Helpers` record because records
 -- | hate impredicativity.
-type Handle q = forall r. HH.IProp ( onMouseDown :: MouseEvent | r ) (q Unit)
+type Handle q = forall r. HH.IProp ( onMouseDown :: MouseEvent | r ) q
 
 type Handle' q =
   { label :: H.RefLabel
-  , onMouseDown :: MouseEvent -> Maybe (q Unit)
+  , onMouseDown :: MouseEvent -> Maybe q
   }
 
 -- | Information about an item stored in state.
@@ -218,8 +220,8 @@ newtype Renderer ps m o e = Renderer
       , handle :: Handle' q
       , info :: ItemInfo' e
       } ->
-    { add :: Int -> q Unit
-    , output :: o -> q Unit
+    { add :: Int -> q
+    , output :: o -> q
     } ->
     H.ComponentHTML q ps m
 type RenderingInfoR' ps m o e r =
@@ -251,7 +253,7 @@ type RenderAdderWhere a =
 -- | type. Impredicative, be warned!
 type RenderAdder ps m = forall q. RenderAdderIn q ps m
 -- | The type of a rendering function when supplied with a specific query type.
-type RenderAdderIn q ps m = q Unit -> Maybe (H.ComponentHTML q ps m)
+type RenderAdderIn q ps m = q -> Maybe (H.ComponentHTML q ps m)
 
 -- | The output message from the component.
 data Message e
@@ -523,13 +525,15 @@ zuruzuru' :: forall ps m o e.
   MonadAff m =>
   H.Component HH.HTML (Query' ps m o e) (Input' ps m o e) (Output o e) m
 zuruzuru' =
-  H.component
+  H.mkComponent
     { initialState
     , render
-    , eval
-    , receiver: HE.input NewInput
-    , initializer: Nothing
-    , finalizer: Nothing
+    , eval: case _ of
+        H.Initialize a -> pure a
+        H.Finalize a -> pure a
+        H.Receive i a -> eval (NewInput i a)
+        H.Action act a -> eval (a <$ act)
+        H.Query fa a -> eval $ lowerCoyoneda fa
     }
 
 initialState :: forall ps m o e.Input' ps m o e -> RealState' ps m o e
@@ -548,7 +552,7 @@ dirClass = case _ of
   Horizontal -> "horizontal"
   Vertical -> "vertical"
 
-render :: forall ps m o e. RealState' ps m o e -> H.ComponentHTML (Query' ps m o e) ps m
+render :: forall ps m o e. RealState' ps m o e -> H.ComponentHTML (Query' ps m o e Unit) ps m
 render = \{ direction, default, renderer: Renderer renderer, values, dragging } ->
   renderer <@> { add: Add <@> unit, output: Output <@> unit } $ values #
     let
@@ -570,7 +574,7 @@ render = \{ direction, default, renderer: Renderer renderer, values, dragging } 
         }
       , handle:
         { label: label k
-        , onMouseDown: HE.input $ Dragging k
+        , onMouseDown: Just <<< flip (Dragging k) unit
         }
       , info:
         { key: k, index: i, value: v, dragged
@@ -614,10 +618,10 @@ getPoses =
       runMaybeT $ getPos k
 
 
-notify :: forall ps m o e. H.HalogenM (RealState' ps m o e) (Query' ps m o e) ps (Output o e) m Unit
+notify :: forall ps m o e. H.HalogenM (RealState' ps m o e) (Query' ps m o e Unit) ps (Output o e) m Unit
 notify = H.raise <<< Left <<< NewState <<< map extract =<< use _values
 
-eval :: forall ps m o e. MonadAff m => Query' ps m o e ~> H.HalogenM (RealState' ps m o e) (Query' ps m o e) ps (Output o e) m
+eval :: forall ps m o e. MonadAff m => Query' ps m o e ~> H.HalogenM (RealState' ps m o e) (Query' ps m o e Unit) ps (Output o e) m
 eval (Output o next) = next <$ do
   H.raise $ Right o
 eval (Reset values next) = next <$ do
@@ -727,15 +731,15 @@ ctransQuery t = H.unComponent \c -> H.mkComponent
   }
 
 transHalogenQ :: forall f f' act i a.
-  (f a -> f' a) ->
+  (f ~> f') ->
   H.HalogenQ f act i a ->
   H.HalogenQ f' act i a
 transHalogenQ t = case _ of
   H.Initialize a -> H.Initialize a
   H.Finalize a -> H.Finalize a
   H.Receive i a -> H.Receive i a
-  H.Handle act a -> H.Handle act a
-  H.Request fa -> H.Request (t fa)
+  H.Action act a -> H.Action act a
+  H.Query fa a -> H.Query (hoistCoyoneda t fa) a
 
 queryInside
   :: forall sym f i o' p px ps o e a
@@ -747,7 +751,7 @@ queryInside
   -> f a
   -> QueryI i ps o e (Maybe a)
 queryInside sym p q = QueryChild $ CQ.mkChildQueryBox $
-  CQ.ChildQuery (\k -> traverse k <<< Slot.lookup sym p) q identity
+  CQ.ChildQuery (\k → maybe (pure Nothing) k <<< Slot.lookup sym p) q identity
 
 queryAllInside
   :: forall sym f i o' p px ps o e a
@@ -758,4 +762,7 @@ queryAllInside
   -> f a
   -> QueryI i ps o e (Map p a)
 queryAllInside sym q = QueryChild $ CQ.mkChildQueryBox $
-  CQ.ChildQuery (\k -> traverse k <<< Slot.slots sym) q identity
+  CQ.ChildQuery (\k -> map catMapMaybes <<< traverse k <<< Slot.slots sym) q identity
+  where
+    catMapMaybes ∷ forall k v. Ord k ⇒ Map k (Maybe v) -> Map k v
+    catMapMaybes = foldrWithIndex (\k v acc → maybe acc (flip (Map.insert k) acc) v) Map.empty

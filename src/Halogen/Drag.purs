@@ -63,7 +63,7 @@ dragEventSource
   → (DragEvent → Maybe a)
   → ES.EventSource m a
 dragEventSource mouseEvent f = ES.effectEventSource \emitter → do
-  let emittance = maybe (pure unit) (ES.emit emitter <<< pure) <<< f
+  let emittance = maybe (pure unit) (ES.emit emitter) <<< f
   let initEv = mouseEventToPageCoord mouseEvent
   eventRef ← Ref.new initEv
   remover ← Ref.new (pure unit :: Effect Unit)

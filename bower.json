@@ -8,7 +8,8 @@
   ],
   "dependencies": {
     "purescript-prelude": "^4.0.0",
-    "purescript-halogen": "master"
+    "purescript-halogen": "master",
+    "purescript-profunctor-lenses": "^6.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0"

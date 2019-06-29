@@ -1,15 +1,17 @@
 module Halogen.Zuruzuru.Demo2D where
 
 import Prelude
+
+import Control.MonadPlus (guard)
 import Data.Array (reverse, dropWhile)
+import Data.Coyoneda (lowerCoyoneda)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), isNothing)
+import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Console (logShow, log)
-import Control.MonadPlus (guard)
-import Data.Symbol (SProxy(..))
 import Halogen as H
 import Halogen.Aff (awaitLoad, runHalogenAff, selectElement)
 import Halogen.HTML as HH
@@ -17,8 +19,8 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Halogen.VDom.Driver (runUI)
 import Halogen.Zuruzuru (Direction(..), Key, Message(..), MuteInput, MuteSimpleInput, MuteSimpleSlot, MuteSlot, RenderAdder, _zuruzuru, justAfter, zuru, zuruzuru)
-import Web.DOM.ParentNode (QuerySelector(..))
 import Partial.Unsafe (unsafePartial)
+import Web.DOM.ParentNode (QuerySelector(..))
 
 type StateEl2D = Tuple String (Array String)
 type State2D = Array StateEl2D
@@ -30,17 +32,20 @@ demo2D :: forall u v m.
   MonadAff m =>
   H.Component HH.HTML (Tuple (Message StateEl2D)) u v m
 demo2D =
-  H.component
+  H.mkComponent
     { initialState: const
       [ Tuple "This" ["a"]
       , Tuple "That" ["b"]
       , Tuple "These" ["a", "b"]
       ]
     , render
-    , eval
-    , receiver: const Nothing
-    , initializer: Nothing
-    , finalizer: Nothing
+    , eval: case _ of
+        H.Initialize a -> pure a
+        H.Finalize a -> pure a
+        H.Receive i a -> pure a
+        H.Action act a -> a <$ eval act
+        H.Query fa _ -> case lowerCoyoneda fa of
+          Tuple act a -> a <$ eval act
     }
   where
     cl :: forall r i.  Array String -> HH.IProp ( "class" :: String | r ) i
@@ -56,7 +61,7 @@ demo2D =
     size = if _ then "big" else "small"
     whenDragged = if _ then " dragged" else ""
 
-    btn :: forall q ps. Array String -> Maybe (q Unit) -> String -> H.ComponentHTML q ps m
+    btn :: forall q ps. Array String -> Maybe q -> String -> H.ComponentHTML q ps m
     btn c q t = HH.a
       [ but c (isNothing q), HE.onClick (pure q) ]
       [ icon t ]
@@ -139,19 +144,19 @@ demo2D =
     liftThru (Left (NewState cs)) = Just $ setr cs
     liftThru _ = Nothing
 
-    lifting (Left m) = Just (Tuple m unit)
+    lifting (Left m) = Just m
     lifting (Right _) = Nothing
 
-    render :: State2D -> H.ComponentHTML (Tuple (Message StateEl2D)) (ZZSlot2 m) m
+    render :: State2D -> H.ComponentHTML (Message StateEl2D) (ZZSlot2 m) m
     render s = HH.div [HP.class_ (H.ClassName "component") ] $
       [ HH.slot _zuruzuru unit zuruzuru (outer s) lifting
       ]
 
-    eval :: Tuple (Message StateEl2D) ~> H.HalogenM State2D (Tuple (Message StateEl2D)) (ZZSlot2 m) v m
-    eval (Tuple (NewState v) a) = a <$ do
+    eval :: Message StateEl2D -> H.HalogenM State2D (Message StateEl2D) (ZZSlot2 m) v m Unit
+    eval (NewState v) = do
       H.liftEffect $ log "Update"
       update v
-    eval (Tuple _ a) = pure a
+    eval _ = pure unit
 
 -- | Demo app.
 main :: Effect Unit
