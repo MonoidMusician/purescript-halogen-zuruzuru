@@ -214,7 +214,7 @@ type MuteRenderingInfo ps m e r = RenderingInfo ps m NoSubOutput e r
 type MuteSimpleRenderingInfo m e r = SimpleRenderingInfo m NoSubOutput e r
 
 newtype Renderer ps m o e = Renderer
-  forall q.
+  (forall q.
     Array
       { helpers :: Helpers o q e
       , handle :: Handle' q
@@ -223,7 +223,7 @@ newtype Renderer ps m o e = Renderer
     { add :: Int -> q
     , output :: o -> q
     } ->
-    H.ComponentHTML q ps m
+    H.ComponentHTML q ps m)
 type RenderingInfoR' ps m o e r =
   ( direction :: Direction
   , default :: m e
